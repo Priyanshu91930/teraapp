@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, TextInput, View, Platform } from 'react-native';
+import { ScrollView, StyleSheet, Switch, Text, TextInput, View, Platform, TouchableOpacity } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import Screen from '../components/Screen';
 import Button from '../components/Button';
 import { colors, radius, spacing } from '../theme';
 import { getSettings, saveSettings, DEFAULT_SETTINGS } from '../services/storage';
+import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { AD_UNIT_IDS } from '../services/adConfig';
 
 function Section({ label, children }) {
   return (
@@ -104,6 +107,19 @@ export default function SettingsScreen() {
               thumbColor={colors.white}
             />
           </SettingRow>
+
+          <SettingRow
+            icon="swap-horizontal"
+            label="Proxy downloads"
+            description="Route TeraBox downloads through the server to bypass ISP/DNS blocks."
+          >
+            <Switch
+              value={settings.useProxy}
+              onValueChange={(v) => update('useProxy', v)}
+              trackColor={{ true: colors.primary, false: colors.surface }}
+              thumbColor={colors.white}
+            />
+          </SettingRow>
         </Section>
 
         <Button title={saved ? 'Saved ✓' : 'Save Settings'} onPress={handleSave} />
@@ -112,6 +128,12 @@ export default function SettingsScreen() {
           TeraBox Downloader — Free & unlimited. Use responsibly.
         </Text>
       </ScrollView>
+      <View style={styles.bannerContainer}>
+        <BannerAd
+          unitId={AD_UNIT_IDS.BANNER}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+        />
+      </View>
     </Screen>
   );
 }
@@ -121,6 +143,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     marginBottom: spacing.xs,
+  },
+  bannerContainer: {
+    alignItems: 'center',
+    backgroundColor: '#fff',
   },
   content: {
     paddingHorizontal: spacing.md,
@@ -200,5 +226,102 @@ const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: spacing.xl,
+  },
+  statsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  statsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.md,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+    paddingBottom: spacing.sm,
+  },
+  statsLabel: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#64748B',
+    letterSpacing: 1.2,
+  },
+  statsTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+    marginTop: 2,
+  },
+  updatedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  pulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+    marginRight: 4,
+  },
+  updatedText: {
+    fontSize: 10,
+    color: '#047857',
+    fontWeight: '700',
+  },
+  statsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statBox: {
+    width: '48.5%',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+    padding: 12,
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  statIconWrap: {
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 8,
+  },
+  barIndicator: {
+    position: 'absolute',
+    top: 14,
+    right: 12,
+    width: 28,
+    height: 4,
+    borderRadius: 2,
+  },
+  statNum: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: -0.5,
+  },
+  statBoxLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: '#64748B',
+    marginTop: 4,
+    letterSpacing: 0.5,
   },
 });

@@ -11,26 +11,30 @@ import {
   View,
   Image,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
-import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as FileSystem from 'expo-file-system/legacy';
+import { BannerAd, BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
+import { AD_UNIT_IDS } from '../services/adConfig';
 import { colors, radius, spacing } from '../theme';
-import { extractTeraboxUrl, resolveTeraboxLink } from '../services/api';
-import { addHistoryItem, getSettings } from '../services/storage';
-
-function formatBytes(bytes, decimals = 2) {
-  if (bytes === 0 || !bytes || isNaN(bytes)) return '0 B';
-  const k = 1024;
-  const dm = decimals < 0 ? 0 : decimals;
-  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
-}
+import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../services/api';
+import { getSettings, getHistory } from '../services/storage';
+import ShareSheet from '../components/ShareSheet';
+import PlayerScreen from './PlayerScreen';
+import {
+  startDownload,
+  pauseDownload,
+  resumeDownload,
+  cancelDownload,
+  addDownloadListener,
+  removeDownloadListener,
+} from '../services/downloadManager';
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
@@ -42,14 +46,62 @@ export default function HomeScreen({ navigation }) {
   const [result, setResult] = useState(null);
   const [progress, setProgress] = useState(0);
 
-  // Advanced download stats & control
-  const [downloadResumable, setDownloadResumable] = useState(null);
+  // State to track the active download from downloadManager
+  const [activeDownloadId, setActiveDownloadId] = useState(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [adLoaded, setAdLoaded] = useState(false);
+  const [showMirrors, setShowMirrors] = useState(false);
+  const [showShareSheet, setShowShareSheet] = useState(false);
+
+  // In-app video player state
+  const [playerVisible, setPlayerVisible] = useState(false);
+  const [playerSource, setPlayerSource] = useState(null); // { url, headers }
+  const [playerName, setPlayerName] = useState(null);
+
+  // Reference for rewarded interstitial
+  const rewardedInterstitialRef = useRef(null);
+
+  useEffect(() => {
+    rewardedInterstitialRef.current = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED, {
+      requestNonPersonalizedAdsOnly: true,
+    });
+
+    const unsubscribeLoaded = rewardedInterstitialRef.current.addAdEventListener(
+      RewardedAdEventType.LOADED,
+      () => {
+        console.log('Rewarded Interstitial Ad loaded.');
+        setAdLoaded(true);
+      }
+    );
+
+    const unsubscribeEarned = rewardedInterstitialRef.current.addAdEventListener(
+      RewardedAdEventType.EARNED_REWARD,
+      (reward) => {
+        console.log('User earned reward of ', reward);
+      }
+    );
+
+    const unsubscribeClosed = rewardedInterstitialRef.current.addAdEventListener(
+      AdEventType.CLOSED,
+      () => {
+        setAdLoaded(false);
+        console.log('Rewarded Interstitial Ad closed, pre-loading next one...');
+        rewardedInterstitialRef.current.load();
+      }
+    );
+
+    rewardedInterstitialRef.current.load();
+
+    return () => {
+      unsubscribeLoaded();
+      unsubscribeEarned();
+      unsubscribeClosed();
+    };
+  }, []);
   const [downloadSpeed, setDownloadSpeed] = useState('0 KB/s');
   const [timeRemaining, setTimeRemaining] = useState('--');
   const [bytesWritten, setBytesWritten] = useState('0 MB');
   const [totalBytes, setTotalBytes] = useState('0 MB');
-  const startTimeRef = useRef(0);
 
   useEffect(() => {
     loadSettings();
@@ -62,6 +114,40 @@ export default function HomeScreen({ navigation }) {
     setSettings(s);
   }
 
+  // Real-time listener for the active download ID
+  useEffect(() => {
+    if (activeDownloadId) {
+      const handleUpdate = (update) => {
+        if (update.status === 'downloaded') {
+          setProgress(1);
+          setDownloading(false);
+          setActiveDownloadId(null);
+          Alert.alert('Download Complete', 'File downloaded successfully.');
+        } else if (update.status === 'failed') {
+          setError(update.error || 'Download failed.');
+          setDownloading(false);
+          setActiveDownloadId(null);
+        } else if (update.status === 'cancelled') {
+          setDownloading(false);
+          setActiveDownloadId(null);
+          setProgress(0);
+        } else if (update.status === 'paused') {
+          setIsPaused(true);
+        } else if (update.status === 'downloading') {
+          setIsPaused(false);
+          setProgress(update.progress || 0);
+          setDownloadSpeed(update.downloadSpeed || '0 KB/s');
+          setTimeRemaining(update.timeRemaining || '--');
+          setBytesWritten(update.bytesWritten || '0 MB');
+          setTotalBytes(update.totalBytes || '0 MB');
+        }
+      };
+
+      addDownloadListener(activeDownloadId, handleUpdate);
+      return () => removeDownloadListener(activeDownloadId, handleUpdate);
+    }
+  }, [activeDownloadId]);
+
   async function pasteFromClipboard() {
     const text = await Clipboard.getStringAsync();
     if (text) {
@@ -73,7 +159,7 @@ export default function HomeScreen({ navigation }) {
   function validate() {
     const url = extractTeraboxUrl(input);
     if (!url) {
-      setError('Invalid share link. Please paste a valid TeraBox link.');
+      setError('Invalid share link. Please paste a valid TeraBox, YouTube, Instagram, Facebook, or TikTok link.');
       return null;
     }
     setError('');
@@ -84,16 +170,69 @@ export default function HomeScreen({ navigation }) {
     const url = validate();
     if (!url) return;
 
+    // Show rewarded ad first if available, then resolve
+    if (adLoaded && rewardedInterstitialRef.current) {
+      try {
+        console.log('Showing Rewarded Ad before resolve...');
+        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.CLOSED,
+          () => {
+            unsubClose();
+            setAdLoaded(false);
+            rewardedInterstitialRef.current?.load(); // preload next
+            doResolve(url);
+          }
+        );
+        rewardedInterstitialRef.current.show();
+        return; // wait for ad to close
+      } catch (err) {
+        console.log('Failed to show rewarded ad:', err);
+      }
+    }
+    // No ad — resolve directly
+    await doResolve(url);
+  }
+
+  async function doResolve(url) {
     setParsing(true);
     setResult(null);
     setError('');
+    // Reset all download UI states for the new file
+    setDownloading(false);
+    setProgress(0);
+    setDownloadSpeed('0 KB/s');
+    setTimeRemaining('--');
+    setBytesWritten('0 MB');
+    setActiveDownloadId(null);
+    setIsPaused(false);
+
     try {
       const s = settings || await getSettings();
-      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality);
-      if (!data.downloadUrl) {
-        throw new Error('Could not find a download link for this file.');
+      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, s.useProxy);
+      const firstResult = (data.list && data.list.length > 0) 
+        ? {
+            ...data.list[0],
+            dlink: data.list[0].dlink || data.list[0].download_url || data.downloadUrl || '',
+            download_url: data.list[0].download_url || data.list[0].dlink || data.downloadUrl || '',
+            stream_url: data.stream_url || data.list[0].stream_url || '',
+            downloadHeaders: data.downloadHeaders || data.list[0].downloadHeaders || {},
+          }
+        : {
+            name: data.name || 'video.mp4',
+            size: data.size || 'Unknown',
+            thumbnail: data.thumbnail || '',
+            dlink: data.downloadUrl || data.dlink || '',
+            download_url: data.downloadUrl || data.dlink || '',
+            stream_url: data.stream_url || '',
+            downloadHeaders: data.downloadHeaders || {},
+          };
+
+      if (!firstResult.dlink && !firstResult.download_url) {
+        throw new Error('Could not find any files for this link.');
       }
-      setResult(data);
+
+      console.log("[Resolve] Setting Result with mapped properties:", JSON.stringify(firstResult));
+      setResult(firstResult);
     } catch (e) {
       setError(e.message || 'Failed to resolve link. Please try again.');
     } finally {
@@ -101,129 +240,163 @@ export default function HomeScreen({ navigation }) {
     }
   }
 
-  async function handleDownloadFinished(uri) {
-    setProgress(1);
-    setDownloading(false);
-    setDownloadResumable(null);
-    setIsPaused(false);
 
-    await addHistoryItem({
-      name: result.name,
-      size: result.size,
-      url: result.downloadUrl,
-      status: 'downloaded',
-    });
+  async function handleDownload() {
+    console.log("[Download] Clicked! Current Result:", JSON.stringify(result));
+    if (!result || !result.dlink) return;
 
-    Alert.alert('Download Complete', 'File downloaded successfully.');
+    // Already downloading — show alert
+    if (downloading) {
+      Alert.alert(
+        '⏳ Download In Progress',
+        'A file is already being downloaded. Please wait for it to finish.',
+        [{ text: 'OK', style: 'default' }]
+      );
+      return;
+    }
 
-    const s = settings || await getSettings();
-    if (s.saveToGallery && Sharing.isAvailableAsync()) {
-      await Sharing.shareAsync(uri, { mimeType: 'video/mp4' });
+    try {
+      const history = await getHistory();
+      const existing = history.find(item => item.name === result.name);
+      if (existing) {
+        if (existing.status === 'downloading') {
+          Alert.alert(
+            '⏳ Already Downloading',
+            'This file is already being downloaded.',
+            [{ text: 'OK', style: 'default' }]
+          );
+          return;
+        } else if (existing.status === 'downloaded') {
+          Alert.alert(
+            '✅ Already Downloaded',
+            'This file has already been downloaded. Do you want to download it again?',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Download Again', onPress: () => triggerDownloadWithAd() }
+            ]
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      console.log("Error checking history:", e);
+    }
+
+
+    await triggerDownloadWithAd();
+
+    async function triggerDownloadWithAd() {
+      // Ad removed from download — start directly
+      await proceedWithDownload();
+    }
+
+    async function proceedWithDownload() {
+      setDownloading(true);
+      setIsPaused(false);
+      setProgress(0);
+      setDownloadSpeed('0 KB/s');
+      setTimeRemaining('--');
+      setBytesWritten('0 MB');
+      setTotalBytes(result.size || 'Unknown');
+
+      try {
+        const id = await startDownload(
+          result.name,
+          result.dlink,
+          result.size,
+          result.thumbnail || '',
+          result.downloadHeaders || {}
+        );
+        setActiveDownloadId(id);
+
+        // Track download in database
+        const isVideo = /\.(mp4|mkv|avi|mov|webm|flv|mp3|wav)$/i.test(result.name || '');
+        const trackType = isVideo ? 'stream' : 'download';
+        const s = settings || await getSettings();
+        if (s && s.apiBaseUrl) {
+          trackActivity(s.apiBaseUrl, trackType).catch(e => console.log('Track activity failed:', e.message));
+        }
+      } catch (e) {
+        setError('Download failed: ' + e.message);
+        setDownloading(false);
+      }
     }
   }
 
-  async function handleDownload() {
-    if (!result || !result.downloadUrl || downloading) return;
-    setDownloading(true);
-    setIsPaused(false);
-    setProgress(0);
-    setDownloadSpeed('0 KB/s');
-    setTimeRemaining('--');
-    setBytesWritten('0 MB');
-    setTotalBytes(result.size || 'Unknown');
-    startTimeRef.current = Date.now();
+  async function handleWatch() {
+    if (!result) return;
 
-    try {
-      const safeName = result.name.replace(/[^\w\-. ]/g, '_');
-      const fileUri = FileSystem.documentDirectory + safeName;
-
-      const download = FileSystem.createDownloadResumable(
-        result.downloadUrl,
-        fileUri,
-        {},
-        (progressEvent) => {
-          const written = progressEvent.totalBytesWritten;
-          const total = progressEvent.totalBytesExpectedToWrite;
-          setBytesWritten(formatBytes(written));
-          setTotalBytes(formatBytes(total));
-
-          if (total > 0) {
-            const p = written / total;
-            setProgress(p);
-
-            // Speed & Time remaining calculations
-            const now = Date.now();
-            const elapsed = (now - startTimeRef.current) / 1000;
-            if (elapsed > 0) {
-              const speed = written / elapsed; // bytes/sec
-              setDownloadSpeed(formatBytes(speed) + '/s');
-
-              const remainingBytes = total - written;
-              const remainingTime = speed > 0 ? remainingBytes / speed : 0;
-              setTimeRemaining(remainingTime > 0 ? Math.round(remainingTime) + 's' : '--');
-            }
-          }
-        }
-      );
-
-      setDownloadResumable(download);
-
-      const res = await download.downloadAsync();
-      if (res) {
-        await handleDownloadFinished(res.uri);
+    async function openPlayer() {
+      const s = settings || await getSettings();
+      if (s && s.apiBaseUrl) {
+        trackActivity(s.apiBaseUrl, 'stream').catch(() => {});
       }
-    } catch (e) {
-      if (e.message && e.message.includes('paused')) {
-        // do not display error on manual pause
+
+      const rawStreamUrl = result.stream_url || '';
+      let playUrl = '';
+
+      // Direct dlink / MP4 is 100% compatible with Android ExoPlayer hardware video rendering
+      if (result.dlink && result.dlink.startsWith('http')) {
+        playUrl = result.dlink;
+      } else if (rawStreamUrl && rawStreamUrl.startsWith('http')) {
+        playUrl = rawStreamUrl;
+      } else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
+        playUrl = result.downloadUrl;
+      } else {
+        playUrl = result.dlink || '';
+      }
+
+      if (!playUrl) {
+        Alert.alert('Error', 'No playable URL found for this video.');
         return;
       }
-      setError('Download failed: ' + (e.message || 'Unknown error'));
-      setDownloading(false);
-      setDownloadResumable(null);
+
+      console.log('[Watch] Final playUrl for video stream:', playUrl.substring(0, 100));
+      const headers = result.downloadHeaders || {};
+
+      setPlayerSource({ url: playUrl, headers });
+      setPlayerName(result.name || 'Video');
+      setPlayerVisible(true);
     }
+
+    if (adLoaded && rewardedInterstitialRef.current) {
+      try {
+        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.CLOSED,
+          () => {
+            unsubClose();
+            setAdLoaded(false);
+            rewardedInterstitialRef.current?.load();
+            openPlayer();
+          }
+        );
+        rewardedInterstitialRef.current.show();
+        return;
+      } catch (err) {
+        console.log('Failed to show rewarded ad:', err);
+      }
+    }
+    await openPlayer();
   }
 
   async function handlePause() {
-    if (!downloadResumable) return;
-    try {
-      await downloadResumable.pauseAsync();
+    if (activeDownloadId) {
+      await pauseDownload(activeDownloadId);
       setIsPaused(true);
-    } catch (e) {
-      setError('Failed to pause download.');
     }
   }
 
   async function handleResume() {
-    if (!downloadResumable) return;
-    try {
+    if (activeDownloadId) {
       setIsPaused(false);
-      // adjust startTimeRef based on progress to keep speed calculation somewhat sane
-      startTimeRef.current = Date.now() - (progress * 10000); 
-      const res = await downloadResumable.resumeAsync();
-      if (res) {
-        await handleDownloadFinished(res.uri);
-      }
-    } catch (e) {
-      setError('Failed to resume download.');
+      await resumeDownload(activeDownloadId);
     }
   }
 
   async function handleCancel() {
-    if (!downloadResumable) return;
-    try {
-      await downloadResumable.pauseAsync(); // pauses the download, preventing it from finishing
-      const safeName = result.name.replace(/[^\w\-. ]/g, '_');
-      const fileUri = FileSystem.documentDirectory + safeName;
-      await FileSystem.deleteAsync(fileUri, { idempotent: true });
-    } catch (e) {
-      // ignore
+    if (activeDownloadId) {
+      await cancelDownload(activeDownloadId);
     }
-    setDownloading(false);
-    setIsPaused(false);
-    setProgress(0);
-    setDownloadResumable(null);
-    setDownloadSpeed('0 KB/s');
-    setTimeRemaining('--');
   }
 
   const canResolve = input.trim().length > 0;
@@ -246,7 +419,7 @@ export default function HomeScreen({ navigation }) {
           </View>
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Terabox Downloader</Text>
-        <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
           <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
       </View>
@@ -265,7 +438,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Paste a TeraBox, TikTok, Instagram..."
+                placeholder="Paste a TeraBox, YouTube, Instagram, TikTok..."
                 placeholderTextColor="#7C8BA1"
                 value={input}
                 onChangeText={(val) => {
@@ -286,8 +459,8 @@ export default function HomeScreen({ navigation }) {
                 <Text style={styles.chipText}>TeraBox</Text>
               </View>
               <View style={styles.chip}>
-                <Ionicons name="logo-tiktok" size={14} color="#000000" />
-                <Text style={styles.chipText}>TikTok</Text>
+                <Ionicons name="logo-youtube" size={14} color="#FF0000" />
+                <Text style={styles.chipText}>YouTube</Text>
               </View>
               <View style={styles.chip}>
                 <Ionicons name="logo-instagram" size={14} color="#E1306C" />
@@ -338,6 +511,49 @@ export default function HomeScreen({ navigation }) {
                 </LinearGradient>
               </TouchableOpacity>
             </View>
+          </View>
+
+          {/* Supported Domains collapsible section */}
+          <View style={styles.mirrorsCard}>
+            <TouchableOpacity 
+              style={styles.mirrorsHeader} 
+              onPress={() => setShowMirrors(!showMirrors)}
+              activeOpacity={0.7}
+            >
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" style={{ marginRight: 6 }} />
+                <Text style={styles.mirrorsTitle}>Supported TeraBox Formats</Text>
+              </View>
+              <Ionicons 
+                name={showMirrors ? "chevron-up" : "chevron-down"} 
+                size={18} 
+                color="#64748B" 
+              />
+            </TouchableOpacity>
+
+            {showMirrors && (
+              <View style={styles.mirrorsGrid}>
+                {[
+                  'terabox.com',
+                  '1024tera.com',
+                  'teraboxapp.com',
+                  'mirrobox.com',
+                  'nephobox.com',
+                  '4funbox.co',
+                  'freeterabox.com',
+                  'tibibox.com',
+                  'momerybox.com'
+                ].map((domain) => (
+                  <View key={domain} style={styles.mirrorItem}>
+                    <Ionicons name="checkmark" size={14} color="#10B981" />
+                    <Text style={styles.mirrorText} numberOfLines={1}>{domain}</Text>
+                  </View>
+                ))}
+                <Text style={styles.mirrorsSubtext}>
+                  ✓ Works with all official domains and regional mirror sites.
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* Error Message */}
@@ -436,48 +652,53 @@ export default function HomeScreen({ navigation }) {
                   </View>
                 </View>
               ) : (
-                <TouchableOpacity
-                  style={styles.downloadBtn}
-                  onPress={handleDownload}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.downloadBtnText}>Download File</Text>
-                </TouchableOpacity>
+                <View style={styles.actionBtnsRow}>
+                  <TouchableOpacity
+                    style={styles.downloadBtn}
+                    onPress={handleDownload}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.downloadBtnText}>Download File</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.watchBtn}
+                    onPress={handleWatch}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.watchBtnText}>Watch</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
           ) : null}
 
-          {/* Mock Advertisement Banner */}
-          <View style={styles.adCard}>
-            <View style={styles.adBadgeRow}>
-              <View style={styles.adBadge}>
-                <Text style={styles.adBadgeText}>Ad</Text>
-              </View>
-              <Text style={styles.adLabel}>Advertisement</Text>
-            </View>
-            <View style={styles.adContent}>
-              <View style={styles.adMainRow}>
-                <View style={styles.adLogo}>
-                  <Ionicons name="logo-google" size={24} color="#4285F4" />
-                </View>
-                <View style={styles.adInfo}>
-                  <Text style={styles.adTitle}>Test Ad : Google Ads</Text>
-                  <Text style={styles.adSubtitleText}>
-                    Stay up to date with your Ads Check how your ads are performing
-                  </Text>
-                </View>
-              </View>
-              <View style={styles.adImagePlaceholder}>
-                <Ionicons name="image-outline" size={40} color="#9CA3AF" />
-                <Text style={styles.adPlaceholderText}>Premium Sponsor Ad</Text>
-              </View>
-              <TouchableOpacity style={styles.adInstallBtn} activeOpacity={0.8}>
-                <Text style={styles.adInstallText}>INSTALL</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <ShareSheet visible={showShareSheet} onClose={() => setShowShareSheet(false)} />
+
+      <PlayerScreen
+        visible={playerVisible}
+        url={playerSource?.url}
+        headers={playerSource?.headers}
+        name={playerName}
+        onClose={() => setPlayerVisible(false)}
+      />
+
+      {/* Banner Ad at bottom */}
+      <View style={styles.bannerAdContainer}>
+        <BannerAd
+          unitId={AD_UNIT_IDS.BANNER}
+          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          requestOptions={{
+            requestNonPersonalizedAdsOnly: true,
+          }}
+          onAdFailedToLoad={(error) => console.log('Banner Ad failed to load:', error.message)}
+        />
+      </View>
     </View>
   );
 }
@@ -531,6 +752,17 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     letterSpacing: 0.2,
     fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+  },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerLogo: {
+    width: 28,
+    height: 28,
+    marginRight: 8,
+    borderRadius: 6,
   },
   content: {
     padding: spacing.md,
@@ -655,6 +887,7 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderWidth: 1,
     borderColor: '#E2E8F0',
+    marginTop: spacing.md,
     marginBottom: spacing.md,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 6 },
@@ -723,15 +956,39 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   downloadBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#10B981',
     borderRadius: 12,
     paddingVertical: 12,
-    alignItems: 'center',
+    marginRight: 8,
   },
   downloadBtnText: {
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '700',
+    marginLeft: 6,
+  },
+  watchBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6366F1',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginLeft: 8,
+  },
+  watchBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
+  },
+  actionBtnsRow: {
+    flexDirection: 'row',
   },
   progressContainer: {
     marginTop: spacing.xs,
@@ -913,5 +1170,69 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
     letterSpacing: 1,
+  },
+  bannerAdContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFFFFF',
+    borderTopWidth: 1,
+    borderTopColor: '#E2E8F0',
+    paddingVertical: 4,
+  },
+  mirrorsCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  mirrorsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  mirrorsTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  mirrorsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
+    marginTop: spacing.md,
+  },
+  mirrorItem: {
+    width: '48%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  mirrorText: {
+    fontSize: 11,
+    color: '#334155',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  mirrorsSubtext: {
+    fontSize: 11,
+    color: '#10B981',
+    fontWeight: '600',
+    marginTop: 6,
+    width: '100%',
+    textAlign: 'center',
   },
 });

@@ -4,7 +4,7 @@ const HISTORY_KEY = '@teraapp/history';
 const SETTINGS_KEY = '@teraapp/settings';
 
 export const DEFAULT_SETTINGS = {
-  apiBaseUrl: 'https://teraapi-8bmpmowoj-priyanshus-projects-2a4066d0.vercel.app',
+  apiBaseUrl: 'https://teraapi-six.vercel.app',
   downloadQuality: 'auto',
   saveToGallery: false,
   autoResume: true,
@@ -14,8 +14,9 @@ export async function getSettings() {
   try {
     const raw = await AsyncStorage.getItem(SETTINGS_KEY);
     const parsed = raw ? JSON.parse(raw) : {};
-    if (!parsed.apiBaseUrl) {
+    if (!parsed.apiBaseUrl || parsed.apiBaseUrl.includes('-8bmpmowoj-')) {
       parsed.apiBaseUrl = DEFAULT_SETTINGS.apiBaseUrl;
+      await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify({ ...parsed, apiBaseUrl: DEFAULT_SETTINGS.apiBaseUrl }));
     }
     return { ...DEFAULT_SETTINGS, ...parsed };
   } catch (e) {
