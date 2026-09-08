@@ -455,7 +455,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Paste a TeraBox, YouTube, Instagram, TikTok..."
+                placeholder="Paste your video or file link here..."
                 placeholderTextColor="#7C8BA1"
                 value={input}
                 onChangeText={(val) => {
@@ -467,22 +467,6 @@ export default function HomeScreen({ navigation }) {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-            </View>
-
-            {/* Social platform chips */}
-            <View style={styles.chipsRow}>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>TeraBox</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>YouTube</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Instagram</Text>
-              </View>
-              <View style={styles.chip}>
-                <Text style={styles.chipText}>Facebook</Text>
-              </View>
             </View>
 
             {/* Instructions tip */}
