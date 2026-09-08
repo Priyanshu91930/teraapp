@@ -52,6 +52,8 @@ export default function HomeScreen({ navigation }) {
   const [adLoaded, setAdLoaded] = useState(false);
   const [showMirrors, setShowMirrors] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
+  const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
+  const [topBannerAdLoaded, setTopBannerAdLoaded] = useState(false);
 
   // In-app video player state
   const [playerVisible, setPlayerVisible] = useState(false);
@@ -159,7 +161,7 @@ export default function HomeScreen({ navigation }) {
   function validate() {
     const url = extractTeraboxUrl(input);
     if (!url) {
-      setError('Invalid share link. Please paste a valid TeraBox, YouTube, Instagram, Facebook, or TikTok link.');
+      setError('Invalid share link. Please paste a valid video or cloud share link.');
       return null;
     }
     setError('');
@@ -332,51 +334,66 @@ export default function HomeScreen({ navigation }) {
         trackActivity(s.apiBaseUrl, 'stream').catch(() => {});
       }
 
+      console.log('=== [WATCH PRESSED] ===');
+      console.log('[Watch Debug] result.stream_url:', result.stream_url ? result.stream_url.substring(0, 80) + '...' : 'EMPTY');
+      console.log('[Watch Debug] result.downloadUrl:', result.downloadUrl ? result.downloadUrl.substring(0, 80) + '...' : 'EMPTY');
+      console.log('[Watch Debug] result.dlink:', result.dlink ? result.dlink.substring(0, 80) + '...' : 'EMPTY');
+
       const rawStreamUrl = result.stream_url || '';
       let playUrl = '';
 
-      // Direct dlink / MP4 is 100% compatible with Android ExoPlayer hardware video rendering
+      // Priority 1: Direct high-speed dlink via Hostinger proxy (Instant <1s playback with Range headers)
       if (result.dlink && result.dlink.startsWith('http')) {
-        playUrl = result.dlink;
-      } else if (rawStreamUrl && rawStreamUrl.startsWith('http')) {
+        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.dlink)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
+        console.log('[Watch] Using high-speed dlink via proxy');
+      }
+      // Priority 2: Valid M3U8 stream_url from Vercel API
+      else if (rawStreamUrl.startsWith('http')) {
         playUrl = rawStreamUrl;
-      } else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        playUrl = result.downloadUrl;
-      } else {
-        playUrl = result.dlink || '';
+        console.log('[Watch] Using stream_url directly (HLS M3U8)');
+      }
+      // Priority 3: Base64 encoded M3U8 data
+      else if (rawStreamUrl.startsWith('data:')) {
+        try {
+          const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
+          const localM3u8Uri = FileSystem.cacheDirectory + 'playlist.m3u8';
+          await FileSystem.writeAsStringAsync(localM3u8Uri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+          console.log('[Watch Success] Successfully created local HLS playlist:', localM3u8Uri);
+          playUrl = localM3u8Uri;
+        } catch (err) {
+          console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
+        }
+      }
+      // Priority 4: downloadUrl fallback
+      else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
+        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.downloadUrl)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
+        console.log('[Watch] Fallback: Using downloadUrl via proxy');
       }
 
       if (!playUrl) {
+        console.error('[Watch Error] No playable URL found in result object!');
         Alert.alert('Error', 'No playable URL found for this video.');
         return;
       }
 
-      console.log('[Watch] Final playUrl for video stream:', playUrl.substring(0, 100));
-      const headers = result.downloadHeaders || {};
+      console.log('[Watch Success] Selected playUrl:', playUrl);
 
-      setPlayerSource({ url: playUrl, headers });
+      // Do NOT pass downloadHeaders when playing through the proxy.
+      // The proxy (download.php) already adds NDUS cookies and User-Agent internally.
+      // Sending extra headers from the app causes the native player to override
+      // the proxy's headers, resulting in 403/404 errors and playback failure.
+      const isProxyUrl = playUrl.includes('download.php');
+      const headers = isProxyUrl ? {} : (result.downloadHeaders || {});
+      let secondaryFallbackUrl = '';
+      if (playUrl === rawStreamUrl && result.dlink && result.dlink.startsWith('http')) {
+        secondaryFallbackUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.dlink)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
+      }
+
+      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers });
       setPlayerName(result.name || 'Video');
       setPlayerVisible(true);
     }
-
-    if (adLoaded && rewardedInterstitialRef.current) {
-      try {
-        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
-          AdEventType.CLOSED,
-          () => {
-            unsubClose();
-            setAdLoaded(false);
-            rewardedInterstitialRef.current?.load();
-            openPlayer();
-          }
-        );
-        rewardedInterstitialRef.current.show();
-        return;
-      } catch (err) {
-        console.log('Failed to show rewarded ad:', err);
-      }
-    }
-    await openPlayer();
+    openPlayer();
   }
 
   async function handlePause() {
@@ -418,7 +435,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.menuBarLong} />
           </View>
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Terabox Downloader</Text>
+        <Text style={styles.topBarTitle}>Tera Downloader</Text>
         <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
           <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -438,7 +455,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Paste a TeraBox, YouTube, Instagram, TikTok..."
+                placeholder="Paste link here to download..."
                 placeholderTextColor="#7C8BA1"
                 value={input}
                 onChangeText={(val) => {
@@ -452,23 +469,23 @@ export default function HomeScreen({ navigation }) {
               />
             </View>
 
-            {/* Social platform chips */}
+            {/* Feature chips */}
             <View style={styles.chipsRow}>
               <View style={styles.chip}>
+                <Ionicons name="flash-outline" size={14} color="#6366F1" />
+                <Text style={styles.chipText}>Fast Speed</Text>
+              </View>
+              <View style={styles.chip}>
+                <Ionicons name="videocam-outline" size={14} color="#10B981" />
+                <Text style={styles.chipText}>HD Media</Text>
+              </View>
+              <View style={styles.chip}>
                 <Ionicons name="cloud-outline" size={14} color="#0066FF" />
-                <Text style={styles.chipText}>TeraBox</Text>
+                <Text style={styles.chipText}>Cloud Drive</Text>
               </View>
               <View style={styles.chip}>
-                <Ionicons name="logo-youtube" size={14} color="#FF0000" />
-                <Text style={styles.chipText}>YouTube</Text>
-              </View>
-              <View style={styles.chip}>
-                <Ionicons name="logo-instagram" size={14} color="#E1306C" />
-                <Text style={styles.chipText}>Instagram</Text>
-              </View>
-              <View style={styles.chip}>
-                <Ionicons name="logo-facebook" size={14} color="#1877F2" />
-                <Text style={styles.chipText}>Facebook</Text>
+                <Ionicons name="shield-checkmark-outline" size={14} color="#8B5CF6" />
+                <Text style={styles.chipText}>Secure</Text>
               </View>
             </View>
 
@@ -513,6 +530,22 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
+          {/* Banner Ad 2 - Placed above Supported Formats */}
+          <View style={topBannerAdLoaded ? [styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }] : { height: 0, overflow: 'hidden' }}>
+            <BannerAd
+              unitId={AD_UNIT_IDS.BANNER_TOP}
+              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+              requestOptions={{
+                requestNonPersonalizedAdsOnly: true,
+              }}
+              onAdLoaded={() => setTopBannerAdLoaded(true)}
+              onAdFailedToLoad={(error) => {
+                console.log('Top Banner Ad failed to load:', error.message);
+                setTopBannerAdLoaded(false);
+              }}
+            />
+          </View>
+
           {/* Supported Domains collapsible section */}
           <View style={styles.mirrorsCard}>
             <TouchableOpacity 
@@ -522,7 +555,7 @@ export default function HomeScreen({ navigation }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" style={{ marginRight: 6 }} />
-                <Text style={styles.mirrorsTitle}>Supported TeraBox Formats</Text>
+                <Text style={styles.mirrorsTitle}>Supported Link Formats</Text>
               </View>
               <Ionicons 
                 name={showMirrors ? "chevron-up" : "chevron-down"} 
@@ -683,20 +716,25 @@ export default function HomeScreen({ navigation }) {
       <PlayerScreen
         visible={playerVisible}
         url={playerSource?.url}
+        fallbackUrl={playerSource?.fallbackUrl}
         headers={playerSource?.headers}
         name={playerName}
         onClose={() => setPlayerVisible(false)}
       />
 
-      {/* Banner Ad at bottom */}
-      <View style={styles.bannerAdContainer}>
+      {/* Banner Ad - Only takes space when ad is loaded, zero placeholder space when loading/failed */}
+      <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
         <BannerAd
           unitId={AD_UNIT_IDS.BANNER}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           requestOptions={{
             requestNonPersonalizedAdsOnly: true,
           }}
-          onAdFailedToLoad={(error) => console.log('Banner Ad failed to load:', error.message)}
+          onAdLoaded={() => setBannerAdLoaded(true)}
+          onAdFailedToLoad={(error) => {
+            console.log('Banner Ad failed to load:', error.message);
+            setBannerAdLoaded(false);
+          }}
         />
       </View>
     </View>
