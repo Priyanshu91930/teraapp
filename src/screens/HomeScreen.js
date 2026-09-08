@@ -161,7 +161,7 @@ export default function HomeScreen({ navigation }) {
   function validate() {
     const url = extractTeraboxUrl(input);
     if (!url) {
-      setError('Invalid share link. Please paste a valid video or cloud share link.');
+      setError('Invalid share link. Please paste a valid TeraBox, YouTube, Instagram, Facebook, or TikTok link.');
       return null;
     }
     setError('');
@@ -435,7 +435,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.menuBarLong} />
           </View>
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Tera Downloader</Text>
+        <Text style={styles.topBarTitle}>Terabox Downloader</Text>
         <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
           <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
         </TouchableOpacity>
@@ -455,7 +455,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.input}
-                placeholder="Paste link here to download..."
+                placeholder="Paste a TeraBox, YouTube, Instagram, TikTok..."
                 placeholderTextColor="#7C8BA1"
                 value={input}
                 onChangeText={(val) => {
@@ -469,23 +469,19 @@ export default function HomeScreen({ navigation }) {
               />
             </View>
 
-            {/* Feature chips */}
+            {/* Social platform chips */}
             <View style={styles.chipsRow}>
               <View style={styles.chip}>
-                <Ionicons name="flash-outline" size={14} color="#6366F1" />
-                <Text style={styles.chipText}>Fast Speed</Text>
+                <Text style={styles.chipText}>TeraBox</Text>
               </View>
               <View style={styles.chip}>
-                <Ionicons name="videocam-outline" size={14} color="#10B981" />
-                <Text style={styles.chipText}>HD Media</Text>
+                <Text style={styles.chipText}>YouTube</Text>
               </View>
               <View style={styles.chip}>
-                <Ionicons name="cloud-outline" size={14} color="#0066FF" />
-                <Text style={styles.chipText}>Cloud Drive</Text>
+                <Text style={styles.chipText}>Instagram</Text>
               </View>
               <View style={styles.chip}>
-                <Ionicons name="shield-checkmark-outline" size={14} color="#8B5CF6" />
-                <Text style={styles.chipText}>Secure</Text>
+                <Text style={styles.chipText}>Facebook</Text>
               </View>
             </View>
 
@@ -530,7 +526,7 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Banner Ad 2 - Placed above Supported Formats */}
+          {/* Banner Ad 2 - Placed above Supported TeraBox Formats */}
           <View style={topBannerAdLoaded ? [styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }] : { height: 0, overflow: 'hidden' }}>
             <BannerAd
               unitId={AD_UNIT_IDS.BANNER_TOP}
@@ -555,7 +551,7 @@ export default function HomeScreen({ navigation }) {
             >
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" style={{ marginRight: 6 }} />
-                <Text style={styles.mirrorsTitle}>Supported Link Formats</Text>
+                <Text style={styles.mirrorsTitle}>Supported TeraBox Formats</Text>
               </View>
               <Ionicons 
                 name={showMirrors ? "chevron-up" : "chevron-down"} 
