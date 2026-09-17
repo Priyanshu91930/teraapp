@@ -255,7 +255,7 @@ export default function HomeScreen({ navigation }) {
         throw new Error('Could not find any files for this link.');
       }
 
-      console.log("[Resolve] Setting Result with mapped properties:", JSON.stringify(firstResult));
+      console.log("[Resolve] Successfully resolved file:", firstResult.name);
       setResult(firstResult);
 
       // Save resolved link item to history with thumbnail and filename
