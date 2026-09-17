@@ -13,6 +13,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as Clipboard from 'expo-clipboard';
 import Screen from '../components/Screen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -53,6 +54,12 @@ export default function HistoryScreen({ navigation }) {
   );
 
   const isPremiumUser = checkIsPremium(user);
+
+  async function handleCopyLink(url) {
+    if (!url) return;
+    await Clipboard.setStringAsync(url);
+    Alert.alert('✅ Link Copied', 'TeraBox link copied to clipboard!');
+  }
 
   async function handleRemove(id) {
     Alert.alert(
@@ -214,9 +221,30 @@ export default function HistoryScreen({ navigation }) {
                   )}
 
                   <View style={styles.info}>
-                    <Text style={styles.name} numberOfLines={2}>
+                    <Text style={styles.name} numberOfLines={1}>
                       {item.name || 'TeraBox File'}
                     </Text>
+
+                    {item.url ? (
+                      <View style={styles.urlRow}>
+                        <Ionicons name="link" size={11} color="#2563EB" />
+                        <Text style={styles.urlText} numberOfLines={1} ellipsizeMode="middle">
+                          {item.url}
+                        </Text>
+                        <TouchableOpacity
+                          style={styles.copyBtn}
+                          activeOpacity={0.75}
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            handleCopyLink(item.url);
+                          }}
+                        >
+                          <Ionicons name="copy-outline" size={11} color="#1D4ED8" />
+                          <Text style={styles.copyBtnText}>Copy</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
+
                     <View style={styles.metaRow}>
                       <View style={styles.statusBadge}>
                         <Text style={styles.statusBadgeText}>
@@ -374,10 +402,41 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     lineHeight: 19,
   },
+  urlRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    marginTop: 4,
+    marginBottom: 2,
+    gap: 4,
+  },
+  urlText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#2563EB',
+    fontWeight: '500',
+  },
+  copyBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#DBEAFE',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    gap: 3,
+  },
+  copyBtnText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#1D4ED8',
+  },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
+    marginTop: 4,
     gap: 4,
   },
   statusBadge: {
