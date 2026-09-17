@@ -34,13 +34,6 @@ export default function DownloadScreen() {
   const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
   const [user, setUser] = useState(null);
 
-  useEffect(() => {
-    (async () => {
-      const stored = await getStoredUser();
-      if (stored) setUser(stored);
-    })();
-  }, []);
-
   const isPremiumUser = checkIsPremium(user);
 
   useFocusEffect(
@@ -51,6 +44,7 @@ export default function DownloadScreen() {
 
   async function loadDownloads() {
     const stored = await getStoredUser();
+    setUser(stored || null);
     const list = await getHistory(stored?.email);
 
     // Perform file existence check

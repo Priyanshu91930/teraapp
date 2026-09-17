@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   ScrollView,
   StyleSheet,
@@ -10,6 +10,7 @@ import {
   Linking,
   Modal,
 } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -31,11 +32,13 @@ export default function SettingsScreen({ navigation }) {
   const [showManageModal, setShowManageModal] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
-  useEffect(() => {
-    getStoredUser().then((u) => {
-      if (u) setUser(u);
-    });
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      getStoredUser().then((u) => {
+        setUser(u || null);
+      });
+    }, [])
+  );
 
   const isLoggedIn = !!(user && user.email);
   const isPremiumUser = checkIsPremium(user);
