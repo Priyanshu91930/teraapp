@@ -161,28 +161,21 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
             showsVerticalScrollIndicator={false}
           >
 
-            {/* Group 0: Top Sign In with Google Card (Only when NOT logged in) */}
+            {/* Group 0: Official Blue Google Sign In Button (Only when NOT logged in) */}
             {!isLoggedIn && (
-              <View style={[styles.groupCard, { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }]}>
-                <TouchableOpacity
-                  style={styles.rowItem}
-                  activeOpacity={0.7}
-                  onPress={handleOneTapGoogleSignIn}
-                >
-                  <View style={[styles.iconCircle, { backgroundColor: '#EA4335' }]}>
-                    <Ionicons name="logo-google" size={18} color="#FFFFFF" />
-                  </View>
-                  <View style={styles.rowTextCol}>
-                    <Text style={[styles.rowLabel, { color: '#DC2626', fontWeight: '700', fontSize: 15 }]}>
-                      Sign In with Google
-                    </Text>
-                    <Text style={[styles.rowSubtitle, { color: '#991B1B' }]}>
-                      Sync your plan on App & Web
-                    </Text>
-                  </View>
-                  <Ionicons name="chevron-forward" size={18} color="#DC2626" />
-                </TouchableOpacity>
-              </View>
+              <TouchableOpacity
+                style={styles.googleSignInBtn}
+                activeOpacity={0.85}
+                onPress={handleOneTapGoogleSignIn}
+              >
+                <View style={styles.googleIconTile}>
+                  <Image
+                    source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png' }}
+                    style={styles.googleLogoImg}
+                  />
+                </View>
+                <Text style={styles.googleBtnText}>Sign in with Google</Text>
+              </TouchableOpacity>
             )}
 
             {/* Group 1: Buy Premium & Manage Premium */}
@@ -574,6 +567,43 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     overflow: 'hidden',
+  },
+  googleSignInBtn: {
+    backgroundColor: '#4285F4',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#3B82F6',
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 6,
+    paddingRight: 20,
+    marginBottom: 4,
+    elevation: 4,
+    shadowColor: '#4285F4',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 6,
+  },
+  googleIconTile: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 16,
+  },
+  googleLogoImg: {
+    width: 24,
+    height: 24,
+    resizeMode: 'contain',
+  },
+  googleBtnText: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+    letterSpacing: 0.2,
   },
   scrollContent: {
     padding: 16,
