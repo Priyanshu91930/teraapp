@@ -87,7 +87,10 @@ export default function HomeScreen({ navigation }) {
   const rewardedInterstitialRef = useRef(null);
 
   useEffect(() => {
-    if (isPremiumUser) return;
+    if (isPremiumUser) {
+      setAdLoaded(false);
+      return;
+    }
     rewardedInterstitialRef.current = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED, {
       requestNonPersonalizedAdsOnly: true,
     });
@@ -196,8 +199,8 @@ export default function HomeScreen({ navigation }) {
     const url = validate();
     if (!url) return;
 
-    // Show rewarded ad first if available, then resolve
-    if (adLoaded && rewardedInterstitialRef.current) {
+    // Show rewarded ad first ONLY for free users if available, then resolve
+    if (!isPremiumUser && adLoaded && rewardedInterstitialRef.current) {
       try {
         console.log('Showing Rewarded Ad before resolve...');
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
