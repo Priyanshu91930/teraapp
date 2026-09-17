@@ -50,14 +50,13 @@ export default function DownloadScreen() {
   );
 
   async function loadDownloads() {
-    const list = await getHistory();
-    // Set downloads list immediately so it loads instantly
-    setDownloads(list.map(item => ({ ...item, exists: false })));
+    const stored = await getStoredUser();
+    const list = await getHistory(stored?.email);
 
-    // Perform file existence check in background
+    // Perform file existence check
     const updatedList = await Promise.all(
       list.map(async (item) => {
-        const safeName = item.name.replace(/[^\w\-. ]/g, '_');
+        const safeName = item.name ? item.name.replace(/[^\w\-. ]/g, '_') : 'file';
         const fileUri = FileSystem.documentDirectory + safeName;
         let exists = false;
         try {
@@ -69,7 +68,13 @@ export default function DownloadScreen() {
         return { ...item, fileUri, exists };
       })
     );
-    setDownloads(updatedList);
+
+    // Show ONLY items that are actively downloading/paused, marked as downloaded, or actually exist on disk
+    const actualDownloads = updatedList.filter(
+      (item) => item.exists || item.status === 'downloading' || item.status === 'paused' || item.status === 'downloaded'
+    );
+
+    setDownloads(actualDownloads);
   }
 
   // Subscribe/unsubscribe to real-time progress for all active downloads in the list
