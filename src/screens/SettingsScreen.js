@@ -123,7 +123,7 @@ export default function SettingsScreen({ navigation }) {
                 <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
               ) : (
                 <Text style={styles.avatarInitial}>
-                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'P'}
+                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
                 </Text>
               )}
             </View>
@@ -137,10 +137,10 @@ export default function SettingsScreen({ navigation }) {
           </View>
 
           <Text style={styles.userName}>
-            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'priya'}
+            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
           </Text>
           <Text style={styles.userEmail}>
-            {isLoggedIn ? user.email : 'priay9193@gmail.com'}
+            {isLoggedIn ? user.email : 'Sign in to sync your plan on App & Web'}
           </Text>
 
           <View style={styles.badgeRow}>
@@ -329,7 +329,7 @@ export default function SettingsScreen({ navigation }) {
                 <Text style={styles.manageExpiryText}>
                   {isPremiumUser ? 'Valid Status: Active & Valid until 2027' : 'Upgrade to unlock all premium features'}
                 </Text>
-                <Text style={styles.manageEmailText}>Linked Account: {user?.email || 'priay9193@gmail.com'}</Text>
+                <Text style={styles.manageEmailText}>Linked Account: {isLoggedIn ? user.email : 'Not Logged In'}</Text>
               </LinearGradient>
 
               {/* Unlocked Features List */}

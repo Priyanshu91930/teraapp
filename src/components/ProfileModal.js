@@ -107,7 +107,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
                   <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
                 ) : (
                   <Text style={styles.avatarInitial}>
-                    {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'P'}
+                    {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
                   </Text>
                 )}
               </View>
@@ -121,10 +121,10 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
             </View>
 
             <Text style={styles.userName}>
-              {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'priya'}
+              {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
             </Text>
             <Text style={styles.userEmail}>
-              {isLoggedIn ? user.email : 'priay9193@gmail.com'}
+              {isLoggedIn ? user.email : 'Sign in to sync your plan on App & Web'}
             </Text>
 
             {/* VIP Status Badge */}
@@ -318,7 +318,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
                   <Text style={styles.manageExpiryText}>
                     {isPremium ? 'Valid Status: Active & Valid until 2027' : 'Upgrade to unlock all premium features'}
                   </Text>
-                  <Text style={styles.manageEmailText}>Linked Account: {user?.email || 'priay9193@gmail.com'}</Text>
+                  <Text style={styles.manageEmailText}>Linked Account: {isLoggedIn ? user.email : 'Not Logged In'}</Text>
                 </LinearGradient>
 
                 {/* Unlocked Features List */}
