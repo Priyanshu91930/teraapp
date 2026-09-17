@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "127142107297",
+    "project_id": "teraboxd0wnloader",
+    "storage_bucket": "teraboxd0wnloader.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:127142107297:android:8c0bd8191809da511678e0",
+        "android_client_info": {
+          "package_name": "com.anihub.teradownloader"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "127142107297-eqjrnnvko66pn6014ndesqimqbtof3ll.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAIVa_tV8jmd7Z7NF65uy2ZayxoOSSMb4o"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "127142107297-eqjrnnvko66pn6014ndesqimqbtof3ll.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

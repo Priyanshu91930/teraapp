@@ -111,7 +111,7 @@ export default function SettingsScreen() {
           <SettingRow
             icon="swap-horizontal"
             label="Proxy downloads"
-            description="Route downloads through the server to bypass ISP/DNS blocks."
+            description="Route TeraBox downloads through the server to bypass ISP/DNS blocks."
           >
             <Switch
               value={settings.useProxy}
@@ -125,7 +125,7 @@ export default function SettingsScreen() {
         <Button title={saved ? 'Saved ✓' : 'Save Settings'} onPress={handleSave} />
 
         <Text style={styles.footer}>
-          Tera Downloader — Free & unlimited. Use responsibly.
+          TeraBox Downloader — Free & unlimited. Use responsibly.
         </Text>
       </ScrollView>
       <View style={styles.bannerContainer}>

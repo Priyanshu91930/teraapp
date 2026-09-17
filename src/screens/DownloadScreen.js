@@ -30,6 +30,7 @@ import {
 export default function DownloadScreen() {
   const [downloads, setDownloads] = useState([]);
   const [activeUpdates, setActiveUpdates] = useState({});
+  const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -332,15 +333,19 @@ export default function DownloadScreen() {
         )}
       </Screen>
 
-      {/* Banner Ad at bottom */}
-      <View style={styles.bannerAdContainer}>
+      {/* Banner Ad - Only takes space when ad is loaded, zero placeholder space when loading/failed */}
+      <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
         <BannerAd
           unitId={AD_UNIT_IDS.BANNER}
           size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           requestOptions={{
             requestNonPersonalizedAdsOnly: true,
           }}
-          onAdFailedToLoad={(error) => console.log('Banner Ad failed to load:', error.message)}
+          onAdLoaded={() => setBannerAdLoaded(true)}
+          onAdFailedToLoad={(error) => {
+            console.log('Banner Ad failed to load:', error.message);
+            setBannerAdLoaded(false);
+          }}
         />
       </View>
     </View>

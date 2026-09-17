@@ -26,6 +26,9 @@ import { colors, radius, spacing } from '../theme';
 import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../services/api';
 import { getSettings, getHistory } from '../services/storage';
 import ShareSheet from '../components/ShareSheet';
+import ProfileModal from '../components/ProfileModal';
+import SubscriptionModal from '../components/SubscriptionModal';
+import { getStoredUser, fetchFreshUserStatus } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
 import {
   startDownload,
@@ -54,6 +57,22 @@ export default function HomeScreen({ navigation }) {
   const [showShareSheet, setShowShareSheet] = useState(false);
   const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
   const [topBannerAdLoaded, setTopBannerAdLoaded] = useState(false);
+
+  // User Auth & Subscription Modal states
+  const [user, setUser] = useState(null);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      const stored = await getStoredUser();
+      if (stored) {
+        setUser(stored);
+        const fresh = await fetchFreshUserStatus(stored.email);
+        if (fresh) setUser(fresh);
+      }
+    })();
+  }, []);
 
   // In-app video player state
   const [playerVisible, setPlayerVisible] = useState(false);
@@ -342,17 +361,12 @@ export default function HomeScreen({ navigation }) {
       const rawStreamUrl = result.stream_url || '';
       let playUrl = '';
 
-      // Priority 1: Direct high-speed dlink via Hostinger proxy (Instant <1s playback with Range headers)
-      if (result.dlink && result.dlink.startsWith('http')) {
-        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.dlink)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
-        console.log('[Watch] Using high-speed dlink via proxy');
-      }
-      // Priority 2: Valid M3U8 stream_url from Vercel API
-      else if (rawStreamUrl.startsWith('http')) {
+      // Priority 1: Valid M3U8/HLS stream_url from API
+      if (rawStreamUrl.startsWith('http')) {
         playUrl = rawStreamUrl;
-        console.log('[Watch] Using stream_url directly (HLS M3U8)');
+        console.log('[Watch] Using stream_url directly');
       }
-      // Priority 3: Base64 encoded M3U8 data
+      // Priority 2: Base64 encoded M3U8 data
       else if (rawStreamUrl.startsWith('data:')) {
         try {
           const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
@@ -364,10 +378,15 @@ export default function HomeScreen({ navigation }) {
           console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
         }
       }
+      // Priority 3: Direct dlink from API
+      else if (result.dlink && result.dlink.startsWith('http')) {
+        playUrl = result.dlink;
+        console.log('[Watch] Using dlink directly from API');
+      }
       // Priority 4: downloadUrl fallback
       else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.downloadUrl)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
-        console.log('[Watch] Fallback: Using downloadUrl via proxy');
+        playUrl = result.downloadUrl;
+        console.log('[Watch] Fallback: Using downloadUrl directly from API');
       }
 
       if (!playUrl) {
@@ -378,15 +397,15 @@ export default function HomeScreen({ navigation }) {
 
       console.log('[Watch Success] Selected playUrl:', playUrl);
 
-      // Do NOT pass downloadHeaders when playing through the proxy.
-      // The proxy (download.php) already adds NDUS cookies and User-Agent internally.
-      // Sending extra headers from the app causes the native player to override
-      // the proxy's headers, resulting in 403/404 errors and playback failure.
+      // Do NOT pass downloadHeaders when playing through the proxy (download.php).
+      // The proxy already handles authentication internally.
       const isProxyUrl = playUrl.includes('download.php');
       const headers = isProxyUrl ? {} : (result.downloadHeaders || {});
       let secondaryFallbackUrl = '';
-      if (playUrl === rawStreamUrl && result.dlink && result.dlink.startsWith('http')) {
-        secondaryFallbackUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(result.dlink)}&filename=${encodeURIComponent(result.name || 'video.mp4')}`;
+      if (playUrl !== result.dlink && result.dlink && result.dlink.startsWith('http')) {
+        secondaryFallbackUrl = result.dlink;
+      } else if (playUrl !== result.downloadUrl && result.downloadUrl && result.downloadUrl.startsWith('http')) {
+        secondaryFallbackUrl = result.downloadUrl;
       }
 
       setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers });
@@ -395,6 +414,28 @@ export default function HomeScreen({ navigation }) {
     }
     openPlayer();
   }
+
+  const handleOpenTelegram = async () => {
+    try {
+      const rawUrl = result?.shareUrl || input.trim();
+      let shortcode = '';
+      const match = rawUrl.match(/\/s\/([\w-]+)/) || rawUrl.match(/surl=([\w-]+)/);
+      if (match && match[1]) {
+        shortcode = match[1];
+      } else {
+        shortcode = encodeURIComponent(rawUrl);
+      }
+
+      const botUsername = 'teraboxdownloader2027_bot';
+      const tgUrl = `https://t.me/${botUsername}?start=app_${shortcode}`;
+
+      await Linking.openURL(tgUrl).catch((e) => {
+        console.error('Failed to open Telegram URL:', e);
+      });
+    } catch (err) {
+      console.error('Error in handleOpenTelegram:', err);
+    }
+  };
 
   async function handlePause() {
     if (activeDownloadId) {
@@ -428,12 +469,19 @@ export default function HomeScreen({ navigation }) {
 
       {/* Royal Blue Top Header Bar */}
       <View style={[styles.topBar, { paddingTop: insets.top + 8, height: 62 + insets.top }]}>
-        <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn}>
-          <View style={styles.customMenuIcon}>
-            <View style={styles.menuBarLong} />
-            <View style={styles.menuBarShort} />
-            <View style={styles.menuBarLong} />
-          </View>
+        <TouchableOpacity activeOpacity={0.7} style={styles.headerProfileBtn} onPress={() => setShowProfileModal(true)}>
+          {user && user.avatar ? (
+            <Image source={{ uri: user.avatar }} style={styles.headerAvatarImg} />
+          ) : (
+            <View style={styles.headerAvatarCircle}>
+              <Ionicons name={user ? "person" : "person-circle"} size={22} color="#FFFFFF" />
+            </View>
+          )}
+          {user && (user.premiumStatus === 'premium' || (user.plan && user.plan !== 'free')) && (
+            <View style={styles.headerCrownBadge}>
+              <Ionicons name="star" size={8} color="#FFFFFF" />
+            </View>
+          )}
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Terabox Downloader</Text>
         <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
@@ -665,22 +713,32 @@ export default function HomeScreen({ navigation }) {
                   </View>
                 </View>
               ) : (
-                <View style={styles.actionBtnsRow}>
+                <View style={styles.actionBtnsContainer}>
+                  <View style={styles.actionBtnsRow}>
+                    <TouchableOpacity
+                      style={styles.downloadBtn}
+                      onPress={handleDownload}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.downloadBtnText}>Download File</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.watchBtn}
+                      onPress={handleWatch}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.watchBtnText}>Watch</Text>
+                    </TouchableOpacity>
+                  </View>
                   <TouchableOpacity
-                    style={styles.downloadBtn}
-                    onPress={handleDownload}
+                    style={styles.telegramBtn}
+                    onPress={handleOpenTelegram}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.downloadBtnText}>Download File</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.watchBtn}
-                    onPress={handleWatch}
-                    activeOpacity={0.8}
-                  >
-                    <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.watchBtnText}>Watch</Text>
+                    <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+                    <Text style={styles.telegramBtnText}>Get in Telegram</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -700,6 +758,26 @@ export default function HomeScreen({ navigation }) {
         headers={playerSource?.headers}
         name={playerName}
         onClose={() => setPlayerVisible(false)}
+      />
+
+      <ProfileModal
+        visible={showProfileModal}
+        onClose={() => setShowProfileModal(false)}
+        user={user}
+        onUserUpdated={(u) => setUser(u)}
+        onOpenUpgrade={() => setShowSubscriptionModal(true)}
+      />
+
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        user={user}
+        onPaymentSuccess={async (email) => {
+          const fresh = await fetchFreshUserStatus(email);
+          if (fresh) setUser(fresh);
+          setShowSubscriptionModal(false);
+          Alert.alert('🎉 Premium Activated!', 'Your plan is now active on both App & Website!');
+        }}
       />
 
       {/* Banner Ad - Only takes space when ad is loaded, zero placeholder space when loading/failed */}
@@ -745,6 +823,42 @@ const styles = StyleSheet.create({
     padding: 4,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  headerProfileBtn: {
+    padding: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  headerAvatarImg: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  headerAvatarCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+  },
+  headerCrownBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#F59E0B',
+    borderRadius: 7,
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   customMenuIcon: {
     width: 22,
@@ -1005,8 +1119,26 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginLeft: 6,
   },
+  actionBtnsContainer: {
+    marginTop: 4,
+  },
   actionBtnsRow: {
     flexDirection: 'row',
+  },
+  telegramBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0088cc',
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 10,
+  },
+  telegramBtnText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
   },
   progressContainer: {
     marginTop: spacing.xs,

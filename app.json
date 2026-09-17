@@ -15,12 +15,14 @@
         "foregroundImage": "./assets/android-icon-foreground.png"
       },
       "package": "com.anihub.teradownloader",
+      "googleServicesFile": "./google-services.json",
       "versionCode": 6
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "@react-native-google-signin/google-signin",
       "./plugins/withKotlinVersion",
       "expo-sharing",
       [
