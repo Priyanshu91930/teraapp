@@ -13,6 +13,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
+import RazorpayCheckout from 'react-native-razorpay';
+
 const API_BASE_URL = 'https://api.teraboxdownloader.co.in';
 
 export default function SubscriptionModal({ visible, onClose, user, onPaymentSuccess }) {
@@ -77,32 +79,45 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         throw new Error(orderData.error || 'Failed to initialize payment gateway.');
       }
 
-      // 2. Open Razorpay Checkout via Website Gateway
-      const checkoutUrl = `https://teraboxdownloader.co.in/checkout.php?plan=${selectedPlan}&email=${encodeURIComponent(user.email)}&order_id=${orderData.orderId}`;
-      
-      Alert.alert(
-        '💳 Razorpay Checkout',
-        `Proceed to pay ${selectedPlan === 'weekly' ? '₹49' : selectedPlan === 'yearly' ? '₹499' : '₹99'} for ${selectedPlan.toUpperCase()} Premium?`,
-        [
-          { text: 'Cancel', style: 'cancel', onPress: () => setLoading(false) },
-          {
-            text: 'Pay Now',
-            onPress: async () => {
-              try {
-                await Linking.openURL(checkoutUrl);
-                // Simulate/Check payment completion after user returns
-                setTimeout(async () => {
-                  setLoading(false);
-                  if (onPaymentSuccess) onPaymentSuccess(user.email);
-                }, 3000);
-              } catch (e) {
-                setLoading(false);
-                Alert.alert('Error', 'Could not open payment gateway.');
-              }
-            },
-          },
-        ]
-      );
+      // 2. Open Native Razorpay Checkout SDK Modal directly in app
+      const options = {
+        description: `${selectedPlan.toUpperCase()} Premium Access`,
+        image: 'https://teraboxdownloader.co.in/logo.png',
+        currency: orderData.currency || 'INR',
+        key: orderData.keyId || 'rzp_live_TbxmcnjfjnDmgx',
+        amount: orderData.amount,
+        name: 'Terabox Downloader',
+        order_id: orderData.orderId,
+        prefill: {
+          email: user.email,
+          contact: '',
+          name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
+        },
+        theme: { color: '#6366F1' },
+      };
+
+      setLoading(false);
+
+      RazorpayCheckout.open(options)
+        .then((data) => {
+          console.log('[Razorpay Success]:', data);
+          Alert.alert(
+            '🎉 Premium Unlocked!',
+            'Thank you for your purchase! Your premium subscription is now active.',
+            [{ text: 'OK' }]
+          );
+          if (onPaymentSuccess) onPaymentSuccess(user.email);
+          if (onClose) onClose();
+        })
+        .catch((error) => {
+          console.log('[Razorpay Error]:', error);
+          if (error && error.code !== 0) {
+            Alert.alert(
+              'Payment Failed',
+              error.description || 'Transaction could not be completed.'
+            );
+          }
+        });
     } catch (err) {
       setLoading(false);
       Alert.alert('Payment Error', err.message || 'Something went wrong while starting checkout.');
