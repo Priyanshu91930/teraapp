@@ -8,7 +8,6 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,7 +35,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       price: '₹99',
       duration: '30 Days Access',
       badge: 'MOST POPULAR',
-      desc: 'Unlimited speed + Web & App Sync',
+      desc: 'Unlimited speed + App, Web & Bot Access',
     },
     {
       id: 'yearly',
@@ -132,7 +131,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
           <View style={styles.header}>
             <View style={styles.headerTitleRow}>
               <Ionicons name="sparkles" size={22} color="#F59E0B" />
-              <Text style={styles.headerTitle}>Upgrade to Premium</Text>
+              <Text style={styles.headerTitle}>Upgrade to VIP Premium</Text>
             </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
               <Ionicons name="close" size={24} color="#64748B" />
@@ -142,30 +141,36 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
             {/* Features */}
             <View style={styles.featuresCard}>
-              <Text style={styles.featuresHeading}>✨ What You Get:</Text>
+              <Text style={styles.featuresHeading}>✨ What You Get with Premium:</Text>
+              
               <View style={styles.featureItem}>
-                <Ionicons name="sparkles" size={18} color="#F59E0B" />
-                <Text style={styles.featureText}>100% Ad-Free Experience in App</Text>
+                <Ionicons name="folder-open" size={18} color="#6366F1" />
+                <Text style={styles.featureText}>TeraBox Folder Download Support</Text>
               </View>
+
               <View style={styles.featureItem}>
-                <Ionicons name="globe-outline" size={18} color="#3B82F6" />
-                <Text style={styles.featureText}>Full Premium Access on Website (teraboxdownloader.co.in)</Text>
+                <Ionicons name="paper-plane" size={18} color="#0EA5E9" />
+                <Text style={styles.featureText}>Direct File Delivery in Telegram Bot</Text>
               </View>
-              <View style={styles.featureItem}>
-                <Ionicons name="paper-plane-outline" size={18} color="#0EA5E9" />
-                <Text style={styles.featureText}>Direct Files in Telegram Bot</Text>
-              </View>
+
               <View style={styles.featureItem}>
                 <Ionicons name="flash" size={18} color="#10B981" />
-                <Text style={styles.featureText}>10x Superfast High-Speed Download Links</Text>
+                <Text style={styles.featureText}>10x Ultra-Fast Download Speed</Text>
               </View>
+
               <View style={styles.featureItem}>
-                <Ionicons name="film" size={18} color="#6366F1" />
-                <Text style={styles.featureText}>1080p HD Video Streaming & Multi-Quality</Text>
+                <Ionicons name="hardware-chip-outline" size={18} color="#F59E0B" />
+                <Text style={styles.featureText}>1 Subscription = 3 Memberships (App, Web & Telegram)</Text>
               </View>
+
               <View style={styles.featureItem}>
-                <Ionicons name="infinite" size={18} color="#EC4899" />
-                <Text style={styles.featureText}>Unlimited Daily Links & Zero Captchas</Text>
+                <Ionicons name="ban-outline" size={18} color="#EF4444" />
+                <Text style={styles.featureText}>100% Ad-Free Experience in App & Web</Text>
+              </View>
+
+              <View style={styles.featureItem}>
+                <Ionicons name="film-outline" size={18} color="#8B5CF6" />
+                <Text style={styles.featureText}>1080p Full HD Video Streaming & Player</Text>
               </View>
             </View>
 
@@ -291,13 +296,13 @@ const styles = StyleSheet.create({
   featureItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
     marginVertical: 4,
   },
   featureText: {
     fontSize: 13,
-    color: '#475569',
-    fontWeight: '500',
+    color: '#1E293B',
+    fontWeight: '600',
   },
   selectPlanLabel: {
     fontSize: 15,

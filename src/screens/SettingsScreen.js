@@ -8,6 +8,7 @@ import {
   Image,
   Alert,
   Linking,
+  Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -27,6 +28,7 @@ export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showManageModal, setShowManageModal] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
   useEffect(() => {
@@ -183,7 +185,7 @@ export default function SettingsScreen({ navigation }) {
               </View>
               <View style={styles.rowTextCol}>
                 <Text style={styles.rowLabel}>Buy Premium</Text>
-                <Text style={styles.rowSubtitle}>100% Ad-Free, 10x Speed & Unlimited Downloads</Text>
+                <Text style={styles.rowSubtitle}>Folder Download, Telegram Bot & 10x Speed</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
             </TouchableOpacity>
@@ -193,16 +195,7 @@ export default function SettingsScreen({ navigation }) {
             <TouchableOpacity
               style={styles.rowItem}
               activeOpacity={0.7}
-              onPress={() => {
-                if (isPremiumUser) {
-                  Alert.alert(
-                    '★ Premium Membership Active',
-                    `Plan: ${user?.plan ? user.plan.toUpperCase() : 'Yearly VIP'}\nStatus: Active & Valid until 2027\n\nFeatures Enabled:\n• 100% Ad-Free Experience\n• 10x Ultra Speed Downloads\n• 1080p HD Streaming`
-                  );
-                } else {
-                  setShowSubscriptionModal(true);
-                }
-              }}
+              onPress={() => setShowManageModal(true)}
             >
               <View style={[styles.iconCircle, { backgroundColor: '#EEF2FF' }]}>
                 <Ionicons name="shield-checkmark" size={18} color="#6366F1" />
@@ -210,7 +203,7 @@ export default function SettingsScreen({ navigation }) {
               <View style={styles.rowTextCol}>
                 <Text style={styles.rowLabel}>Manage Premium</Text>
                 <Text style={styles.rowSubtitle}>
-                  {isPremiumUser ? 'View active plan details & benefits' : 'No active plan — Tap to view plans'}
+                  {isPremiumUser ? 'View active plan, expiry & 6 unlocked features' : 'Tap to view membership benefits'}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
@@ -295,6 +288,7 @@ export default function SettingsScreen({ navigation }) {
         </ScrollView>
       </View>
 
+      {/* Subscription Checkout Modal */}
       <SubscriptionModal
         visible={showSubscriptionModal}
         onClose={() => setShowSubscriptionModal(false)}
@@ -304,6 +298,127 @@ export default function SettingsScreen({ navigation }) {
           setShowSubscriptionModal(false);
         }}
       />
+
+      {/* Manage Premium Modal View */}
+      <Modal visible={showManageModal} animationType="slide" transparent onRequestClose={() => setShowManageModal(false)}>
+        <View style={styles.manageOverlay}>
+          <View style={styles.manageContainer}>
+            {/* Header */}
+            <View style={styles.manageHeader}>
+              <View style={styles.manageHeaderTitleRow}>
+                <Ionicons name="star" size={20} color="#F59E0B" />
+                <Text style={styles.manageHeaderTitle}>Manage Premium</Text>
+              </View>
+              <TouchableOpacity onPress={() => setShowManageModal(false)}>
+                <Ionicons name="close" size={22} color="#64748B" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.manageBody} showsVerticalScrollIndicator={false}>
+              {/* Active Membership Banner Card */}
+              <LinearGradient colors={['#1E293B', '#0F172A']} style={styles.manageStatusCard}>
+                <View style={styles.manageStatusBadge}>
+                  <Ionicons name="checkmark-circle" size={14} color="#10B981" />
+                  <Text style={styles.manageStatusBadgeText}>
+                    {isPremiumUser ? '★ VIP MEMBERSHIP ACTIVE' : 'FREE USER'}
+                  </Text>
+                </View>
+                <Text style={styles.managePlanName}>
+                  {isPremiumUser ? `${user?.plan ? user.plan.toUpperCase() : 'YEARLY'} VIP PLAN` : 'No Active Plan'}
+                </Text>
+                <Text style={styles.manageExpiryText}>
+                  {isPremiumUser ? 'Valid Status: Active & Valid until 2027' : 'Upgrade to unlock all premium features'}
+                </Text>
+                <Text style={styles.manageEmailText}>Linked Account: {user?.email || 'priay9193@gmail.com'}</Text>
+              </LinearGradient>
+
+              {/* Unlocked Features List */}
+              <Text style={styles.manageSectionHeading}>✨ Features Included in Subscription:</Text>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#EEF2FF' }]}>
+                  <Ionicons name="folder-open" size={20} color="#6366F1" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>TeraBox Folder Download Support</Text>
+                  <Text style={styles.manageFeatureSub}>Download full multi-file TeraBox folders at once</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#E0F2FE' }]}>
+                  <Ionicons name="paper-plane" size={20} color="#0284C7" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>Direct Files in Telegram Bot</Text>
+                  <Text style={styles.manageFeatureSub}>Get direct playable video & document files in Telegram</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#FEF3C7' }]}>
+                  <Ionicons name="flash" size={20} color="#D97706" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>10x Ultra-Fast Multi-Thread Speed</Text>
+                  <Text style={styles.manageFeatureSub}>Maximum ISP acceleration with zero speed limits</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#F3E8FF' }]}>
+                  <Ionicons name="hardware-chip" size={20} color="#9333EA" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>1 Subscription = 3 Memberships</Text>
+                  <Text style={styles.manageFeatureSub}>Use on Mobile App, Website & Telegram Bot simultaneously</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#ECFDF5' }]}>
+                  <Ionicons name="ban" size={20} color="#10B981" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>100% Ad-Free Experience</Text>
+                  <Text style={styles.manageFeatureSub}>Zero banner ads, zero video interstitial ads</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              <View style={styles.manageFeatureItem}>
+                <View style={[styles.manageIconBox, { backgroundColor: '#FCE7F3' }]}>
+                  <Ionicons name="film" size={20} color="#DB2777" />
+                </View>
+                <View style={styles.manageFeatureTextCol}>
+                  <Text style={styles.manageFeatureTitle}>1080p Full HD Video Player</Text>
+                  <Text style={styles.manageFeatureSub}>Instant streaming with multi-quality resolution selector</Text>
+                </View>
+                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
+              </View>
+
+              {/* Extend / Upgrade Button */}
+              <TouchableOpacity
+                style={styles.extendBtn}
+                activeOpacity={0.8}
+                onPress={() => {
+                  setShowManageModal(false);
+                  setShowSubscriptionModal(true);
+                }}
+              >
+                <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.extendGradient}>
+                  <Ionicons name="sparkles" size={18} color="#FFFFFF" />
+                  <Text style={styles.extendBtnText}>Extend Subscription Plan</Text>
+                </LinearGradient>
+              </TouchableOpacity>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>
@@ -493,5 +608,125 @@ const styles = StyleSheet.create({
   bannerContainer: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
+  },
+  manageOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(15, 23, 42, 0.7)',
+    justifyContent: 'flex-end',
+  },
+  manageContainer: {
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '88%',
+    paddingBottom: 20,
+  },
+  manageHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F1F5F9',
+  },
+  manageHeaderTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  manageHeaderTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  manageBody: {
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    gap: 14,
+  },
+  manageStatusCard: {
+    borderRadius: 18,
+    padding: 16,
+  },
+  manageStatusBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 8,
+  },
+  manageStatusBadgeText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#10B981',
+    letterSpacing: 0.5,
+  },
+  managePlanName: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  manageExpiryText: {
+    fontSize: 13,
+    color: '#CBD5E1',
+    marginTop: 4,
+  },
+  manageEmailText: {
+    fontSize: 11,
+    color: '#94A3B8',
+    marginTop: 8,
+  },
+  manageSectionHeading: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#334155',
+    marginTop: 4,
+  },
+  manageFeatureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 12,
+    gap: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  manageIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  manageFeatureTextCol: {
+    flex: 1,
+  },
+  manageFeatureTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  manageFeatureSub: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  extendBtn: {
+    marginTop: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  extendGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
+  },
+  extendBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
 });
