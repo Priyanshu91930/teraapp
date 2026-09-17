@@ -65,8 +65,15 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         body: JSON.stringify({ email: user.email, plan: selectedPlan }),
       });
 
-      const orderData = await orderRes.json();
-      if (!orderData.success || !orderData.orderId) {
+      const responseText = await orderRes.text();
+      let orderData;
+      try {
+        orderData = JSON.parse(responseText);
+      } catch (e) {
+        throw new Error('Server returned invalid response. Please try again shortly.');
+      }
+
+      if (!orderRes.ok || !orderData.success || !orderData.orderId) {
         throw new Error(orderData.error || 'Failed to initialize payment gateway.');
       }
 
