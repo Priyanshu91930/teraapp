@@ -16,6 +16,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
@@ -26,7 +27,6 @@ import { colors, radius, spacing } from '../theme';
 import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../services/api';
 import { getSettings, getHistory, addHistoryItem } from '../services/storage';
 import ShareSheet from '../components/ShareSheet';
-import ProfileModal from '../components/ProfileModal';
 import SubscriptionModal from '../components/SubscriptionModal';
 import { getStoredUser, fetchFreshUserStatus, checkIsPremium } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
@@ -41,6 +41,7 @@ import {
 
 export default function HomeScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const isFocused = useIsFocused();
   const [settings, setSettings] = useState(null);
   const [input, setInput] = useState('');
   const [parsing, setParsing] = useState(false);
@@ -60,21 +61,22 @@ export default function HomeScreen({ navigation }) {
 
   // User Auth & Subscription Modal states
   const [user, setUser] = useState(null);
-  const [showProfileModal, setShowProfileModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   const isPremiumUser = checkIsPremium(user);
 
   useEffect(() => {
-    (async () => {
-      const stored = await getStoredUser();
-      if (stored) {
-        setUser(stored);
-        const fresh = await fetchFreshUserStatus(stored.email);
-        if (fresh) setUser(fresh);
-      }
-    })();
-  }, []);
+    if (isFocused) {
+      (async () => {
+        const stored = await getStoredUser();
+        setUser(stored || null);
+        if (stored && stored.email) {
+          const fresh = await fetchFreshUserStatus(stored.email);
+          if (fresh) setUser(fresh);
+        }
+      })();
+    }
+  }, [isFocused]);
 
   // In-app video player state
   const [playerVisible, setPlayerVisible] = useState(false);
@@ -487,7 +489,7 @@ export default function HomeScreen({ navigation }) {
 
       {/* Royal Blue Top Header Bar */}
       <View style={[styles.topBar, { paddingTop: insets.top + 8, height: 62 + insets.top }]}>
-        <TouchableOpacity activeOpacity={0.7} style={styles.headerProfileBtn} onPress={() => setShowProfileModal(true)}>
+        <TouchableOpacity activeOpacity={0.7} style={styles.headerProfileBtn} onPress={() => navigation.navigate('Settings')}>
           {user && user.avatar ? (
             <Image source={{ uri: user.avatar }} style={styles.headerAvatarImg} />
           ) : (
@@ -781,13 +783,7 @@ export default function HomeScreen({ navigation }) {
         isPremium={isPremiumUser}
       />
 
-      <ProfileModal
-        visible={showProfileModal}
-        onClose={() => setShowProfileModal(false)}
-        user={user}
-        onUserUpdated={(u) => setUser(u)}
-        onOpenUpgrade={() => setShowSubscriptionModal(true)}
-      />
+
 
       <SubscriptionModal
         visible={showSubscriptionModal}
