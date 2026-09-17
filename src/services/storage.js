@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStoredUser } from './authService';
 
 const HISTORY_KEY = '@teraapp/history';
 const SETTINGS_KEY = '@teraapp/settings';
+const API_BASE_URL = 'https://api.teraboxdownloader.co.in';
 
 export const DEFAULT_SETTINGS = {
   apiBaseUrl: 'https://teraapi-six.vercel.app',
@@ -28,7 +30,28 @@ export async function saveSettings(settings) {
   await AsyncStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
 }
 
-export async function getHistory() {
+export async function getHistory(userEmail) {
+  let email = userEmail;
+  if (!email) {
+    const user = await getStoredUser();
+    if (user && user.email) email = user.email;
+  }
+
+  // If user is logged in, fetch cloud history from MongoDB
+  if (email) {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}`);
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.history)) {
+        await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(data.history.slice(0, 100)));
+        return data.history;
+      }
+    } catch (e) {
+      console.log('MongoDB history fetch error, fallback to local:', e.message);
+    }
+  }
+
+  // Fallback to local storage
   try {
     const raw = await AsyncStorage.getItem(HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];
@@ -37,35 +60,91 @@ export async function getHistory() {
   }
 }
 
-export async function addHistoryItem(item) {
-  const history = await getHistory();
-  // Filter out any duplicate item with same name or url
-  const filtered = history.filter((h) => h.name !== item.name && (h.url ? h.url !== item.url : true));
+export async function addHistoryItem(item, userEmail) {
+  let email = userEmail;
+  if (!email) {
+    const user = await getStoredUser();
+    if (user && user.email) email = user.email;
+  }
+
+  // Note: dlink is intentionally NOT saved to MongoDB for security
   const newItem = {
     id: item.id || String(Date.now()),
-    name: item.name || 'Unknown File',
-    size: item.size || 'Unknown Size',
+    name: item.name || 'TeraBox File',
+    size: item.size || 'Unknown',
     url: item.url || '',
-    dlink: item.dlink || '',
-    stream_url: item.stream_url || '',
     thumbnail: item.thumbnail || '',
     status: item.status || 'resolved',
     downloadedAt: item.downloadedAt || new Date().toISOString(),
-    downloadHeaders: item.downloadHeaders || '',
   };
+
+  // If user is logged in, sync with MongoDB database
+  if (email && newItem.url) {
+    try {
+      await fetch(`${API_BASE_URL}/api/history`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email,
+          name: newItem.name,
+          size: newItem.size,
+          thumbnail: newItem.thumbnail,
+          url: newItem.url,
+        }),
+      });
+    } catch (e) {
+      console.log('MongoDB history add error:', e.message);
+    }
+  }
+
+  // Save to local storage as well
+  const history = await getHistory(email);
+  const filtered = history.filter((h) => h.name !== newItem.name && (h.url ? h.url !== newItem.url : true));
   const next = [newItem, ...filtered];
   await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, 100)));
   return next;
 }
 
-export async function removeHistoryItem(id) {
-  const history = await getHistory();
+export async function removeHistoryItem(id, userEmail) {
+  let email = userEmail;
+  if (!email) {
+    const user = await getStoredUser();
+    if (user && user.email) email = user.email;
+  }
+
+  if (email) {
+    try {
+      await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}&id=${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.log('MongoDB history remove error:', e.message);
+    }
+  }
+
+  const history = await getHistory(email);
   const next = history.filter((h) => h.id !== id);
   await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next));
   return next;
 }
 
-export async function clearHistory() {
+export async function clearHistory(userEmail) {
+  let email = userEmail;
+  if (!email) {
+    const user = await getStoredUser();
+    if (user && user.email) email = user.email;
+  }
+
+  if (email) {
+    try {
+      await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}&clearAll=true`, {
+        method: 'DELETE',
+      });
+    } catch (e) {
+      console.log('MongoDB history clear error:', e.message);
+    }
+  }
+
   await AsyncStorage.removeItem(HISTORY_KEY);
   return [];
 }
