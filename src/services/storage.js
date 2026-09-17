@@ -37,21 +37,24 @@ export async function getHistory(userEmail) {
     if (user && user.email) email = user.email;
   }
 
-  // If user is logged in, fetch cloud history from MongoDB
-  if (email) {
-    try {
-      const res = await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}`);
-      const data = await res.json();
-      if (data && data.success && Array.isArray(data.history)) {
-        await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(data.history.slice(0, 100)));
-        return data.history;
-      }
-    } catch (e) {
-      console.log('MongoDB history fetch error, fallback to local:', e.message);
-    }
+  // If user is signed out, return empty list to prevent leaking previous user's history
+  if (!email) {
+    return [];
   }
 
-  // Fallback to local storage
+  // If user is logged in, fetch cloud history from MongoDB
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}`);
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.history)) {
+      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(data.history.slice(0, 100)));
+      return data.history;
+    }
+  } catch (e) {
+    console.log('MongoDB history fetch error, fallback to local:', e.message);
+  }
+
+  // Fallback to local storage for logged-in user
   try {
     const raw = await AsyncStorage.getItem(HISTORY_KEY);
     return raw ? JSON.parse(raw) : [];

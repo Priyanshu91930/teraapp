@@ -57,6 +57,7 @@ export async function logoutUser() {
   try {
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
     await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
+    await AsyncStorage.removeItem('@teraapp/history');
   } catch (e) {}
 }
 
