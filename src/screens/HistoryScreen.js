@@ -7,7 +7,7 @@ import {
   Platform,
   TouchableOpacity,
   Image,
-  Alert
+  Alert,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,6 +20,7 @@ import { clearHistory, getHistory, removeHistoryItem } from '../services/storage
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
 import { getStoredUser, checkIsPremium } from '../services/authService';
+import PlayerScreen from './PlayerScreen';
 
 function formatDate(iso) {
   try {
@@ -31,9 +32,14 @@ function formatDate(iso) {
   }
 }
 
-export default function HistoryScreen() {
+export default function HistoryScreen({ navigation }) {
   const [items, setItems] = useState([]);
   const [user, setUser] = useState(null);
+
+  // In-app video player state for history items
+  const [playerVisible, setPlayerVisible] = useState(false);
+  const [playerSource, setPlayerSource] = useState(null);
+  const [playerName, setPlayerName] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -49,7 +55,7 @@ export default function HistoryScreen() {
   async function handleRemove(id) {
     Alert.alert(
       'Remove from History',
-      'Are you sure you want to remove this item from your download history?',
+      'Are you sure you want to remove this item from history?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -66,7 +72,7 @@ export default function HistoryScreen() {
   async function handleClear() {
     Alert.alert(
       'Clear History',
-      'Are you sure you want to clear all download history?',
+      'Are you sure you want to clear all history?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -80,22 +86,38 @@ export default function HistoryScreen() {
     );
   }
 
-  async function handleOpenFile(item) {
-    const safeName = item.name.replace(/[^\w\-. ]/g, '_');
+  async function handleItemPress(item) {
+    const safeName = item.name ? item.name.replace(/[^\w\-. ]/g, '_') : 'file';
     const fileUri = FileSystem.documentDirectory + safeName;
+
+    // Check if local file exists
     try {
       const info = await FileSystem.getInfoAsync(fileUri);
-      if (!info.exists) {
-        Alert.alert('File not found', 'The local file does not exist anymore.');
+      if (info.exists) {
+        await Sharing.shareAsync(fileUri, {
+          dialogTitle: `Open ${item.name}`,
+          UTI: 'public.data',
+        });
         return;
       }
-      await Sharing.shareAsync(fileUri, {
-        dialogTitle: `Open ${item.name}`,
-        UTI: 'public.data',
-      });
     } catch (e) {
-      Alert.alert('Error', 'Failed to open file.');
+      // ignore
     }
+
+    // If stream_url or dlink present, launch player
+    const playUrl = item.stream_url || item.dlink || item.url;
+    if (playUrl && playUrl.startsWith('http')) {
+      setPlayerSource({ url: playUrl, headers: {} });
+      setPlayerName(item.name || 'Video');
+      setPlayerVisible(true);
+      return;
+    }
+
+    Alert.alert(
+      item.name || 'History Item',
+      `Size: ${item.size || 'Unknown'}\nDate: ${formatDate(item.downloadedAt)}`,
+      [{ text: 'OK' }]
+    );
   }
 
   return (
@@ -108,7 +130,7 @@ export default function HistoryScreen() {
         <View style={styles.header}>
           <View style={styles.headerTextGroup}>
             <Text style={styles.title}>History</Text>
-            <Text style={styles.subtitle}>List of your past downloads</Text>
+            <Text style={styles.subtitle}>Your searched links & downloaded files</Text>
           </View>
           {items.length > 0 ? (
             <TouchableOpacity
@@ -129,7 +151,7 @@ export default function HistoryScreen() {
             </View>
             <Text style={styles.emptyTitle}>No history found</Text>
             <Text style={styles.emptyText}>
-              Downloaded files and activities will show up here.
+              Searched TeraBox links & files will automatically show up here with thumbnails.
             </Text>
           </View>
         ) : (
@@ -141,26 +163,42 @@ export default function HistoryScreen() {
             renderItem={({ item }) => (
               <TouchableOpacity
                 style={styles.card}
-                onPress={() => handleOpenFile(item)}
+                onPress={() => handleItemPress(item)}
                 activeOpacity={0.8}
               >
                 {item.thumbnail ? (
-                  <Image source={{ uri: item.thumbnail }} style={styles.thumbnailImage} />
+                  <View style={styles.thumbnailWrap}>
+                    <Image
+                      source={{ uri: item.thumbnail }}
+                      style={styles.thumbnailImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.playOverlayIcon}>
+                      <Ionicons name="play" size={12} color="#FFFFFF" />
+                    </View>
+                  </View>
                 ) : (
                   <View style={styles.iconWrap}>
-                    <Ionicons name="videocam" size={20} color="#6366F1" />
+                    <Ionicons name="film-outline" size={22} color="#6366F1" />
                   </View>
                 )}
+
                 <View style={styles.info}>
                   <Text style={styles.name} numberOfLines={2}>
-                    {item.name}
+                    {item.name || 'TeraBox File'}
                   </Text>
                   <View style={styles.metaRow}>
-                    <Text style={styles.size}>{item.size}</Text>
+                    <View style={styles.statusBadge}>
+                      <Text style={styles.statusBadgeText}>
+                        {item.status === 'downloaded' ? 'Downloaded' : 'Resolved'}
+                      </Text>
+                    </View>
+                    <Text style={styles.size}>{item.size || 'Unknown'}</Text>
                     <Text style={styles.bullet}>•</Text>
                     <Text style={styles.date}>{formatDate(item.downloadedAt)}</Text>
                   </View>
                 </View>
+
                 <TouchableOpacity
                   style={styles.deleteBtn}
                   onPress={() => handleRemove(item.id)}
@@ -173,6 +211,16 @@ export default function HistoryScreen() {
           />
         )}
       </Screen>
+
+      <PlayerScreen
+        visible={playerVisible}
+        url={playerSource?.url}
+        headers={playerSource?.headers}
+        name={playerName}
+        onClose={() => setPlayerVisible(false)}
+        isPremium={isPremiumUser}
+      />
+
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>
           <BannerAd
@@ -243,48 +291,75 @@ const styles = StyleSheet.create({
   card: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.85)',
+    backgroundColor: '#FFFFFF',
     borderRadius: 16,
-    padding: spacing.md,
-    marginBottom: spacing.sm,
+    padding: 12,
+    marginBottom: 10,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.6)',
+    borderColor: '#E2E8F0',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.03,
-    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
     elevation: 2,
   },
+  thumbnailWrap: {
+    position: 'relative',
+    marginRight: 12,
+  },
   thumbnailImage: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
-    marginRight: spacing.md,
+    width: 56,
+    height: 56,
+    borderRadius: 12,
     backgroundColor: '#F1F5F9',
   },
+  playOverlayIcon: {
+    position: 'absolute',
+    bottom: 4,
+    right: 4,
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.65)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   iconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 8,
+    width: 56,
+    height: 56,
+    borderRadius: 12,
     backgroundColor: '#EEF2FF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: spacing.md,
+    marginRight: 12,
   },
   info: {
     flex: 1,
-    marginRight: spacing.sm,
+    marginRight: 8,
   },
   name: {
-    color: '#1E293B',
-    fontSize: 13,
+    color: '#0F172A',
+    fontSize: 14,
     fontWeight: '700',
-    lineHeight: 18,
+    lineHeight: 19,
   },
   metaRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 6,
+    gap: 4,
+  },
+  statusBadge: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    marginRight: 4,
+  },
+  statusBadgeText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#2563EB',
   },
   size: {
     color: '#64748B',
@@ -294,7 +369,7 @@ const styles = StyleSheet.create({
   bullet: {
     color: '#94A3B8',
     fontSize: 10,
-    marginHorizontal: 6,
+    marginHorizontal: 4,
   },
   date: {
     color: '#94A3B8',

@@ -24,7 +24,7 @@ import { BannerAd, BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } 
 import { AD_UNIT_IDS } from '../services/adConfig';
 import { colors, radius, spacing } from '../theme';
 import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../services/api';
-import { getSettings, getHistory } from '../services/storage';
+import { getSettings, getHistory, addHistoryItem } from '../services/storage';
 import ShareSheet from '../components/ShareSheet';
 import ProfileModal from '../components/ProfileModal';
 import SubscriptionModal from '../components/SubscriptionModal';
@@ -257,6 +257,21 @@ export default function HomeScreen({ navigation }) {
 
       console.log("[Resolve] Setting Result with mapped properties:", JSON.stringify(firstResult));
       setResult(firstResult);
+
+      // Save resolved link item to history with thumbnail and filename
+      try {
+        await addHistoryItem({
+          name: firstResult.name,
+          size: firstResult.size,
+          thumbnail: firstResult.thumbnail || '',
+          url: url,
+          dlink: firstResult.dlink,
+          stream_url: firstResult.stream_url,
+          status: 'resolved',
+        });
+      } catch (histErr) {
+        console.log('Failed to auto-save history:', histErr.message);
+      }
     } catch (e) {
       setError(e.message || 'Failed to resolve link. Please try again.');
     } finally {

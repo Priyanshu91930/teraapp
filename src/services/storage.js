@@ -39,17 +39,21 @@ export async function getHistory() {
 
 export async function addHistoryItem(item) {
   const history = await getHistory();
-  const next = [
-    {
-      id: String(Date.now()),
-      name: item.name || 'Unknown',
-      size: item.size || '0 B',
-      url: item.url || '',
-      status: item.status || 'downloaded',
-      downloadedAt: new Date().toISOString(),
-    },
-    ...history,
-  ];
+  // Filter out any duplicate item with same name or url
+  const filtered = history.filter((h) => h.name !== item.name && (h.url ? h.url !== item.url : true));
+  const newItem = {
+    id: item.id || String(Date.now()),
+    name: item.name || 'Unknown File',
+    size: item.size || 'Unknown Size',
+    url: item.url || '',
+    dlink: item.dlink || '',
+    stream_url: item.stream_url || '',
+    thumbnail: item.thumbnail || '',
+    status: item.status || 'resolved',
+    downloadedAt: item.downloadedAt || new Date().toISOString(),
+    downloadHeaders: item.downloadHeaders || '',
+  };
+  const next = [newItem, ...filtered];
   await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(next.slice(0, 100)));
   return next;
 }
