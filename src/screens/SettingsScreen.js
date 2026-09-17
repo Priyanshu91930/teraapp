@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
   StyleSheet,
-  Switch,
   Text,
   View,
   TouchableOpacity,
@@ -15,7 +14,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { getStoredUser, checkIsPremium, syncGoogleUser, logoutUser } from '../services/authService';
-import { getSettings, saveSettings, DEFAULT_SETTINGS } from '../services/storage';
 import SubscriptionModal from '../components/SubscriptionModal';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
@@ -28,12 +26,10 @@ GoogleSignin.configure({
 export default function SettingsScreen({ navigation }) {
   const insets = useSafeAreaInsets();
   const [user, setUser] = useState(null);
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
   useEffect(() => {
-    getSettings().then(setSettings);
     getStoredUser().then((u) => {
       if (u) setUser(u);
     });
@@ -41,12 +37,6 @@ export default function SettingsScreen({ navigation }) {
 
   const isLoggedIn = !!(user && user.email);
   const isPremiumUser = checkIsPremium(user);
-
-  function updateSetting(key, value) {
-    const updated = { ...settings, [key]: value };
-    setSettings(updated);
-    saveSettings(updated);
-  }
 
   async function handleOneTapGoogleSignIn() {
     setLoggingIn(true);
@@ -227,7 +217,7 @@ export default function SettingsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Group 2: Account & Downloads */}
+          {/* Group 2: Edit Profile & Downloads */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
@@ -256,53 +246,7 @@ export default function SettingsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Group 3: App Toggles & Preferences */}
-          <View style={styles.groupCard}>
-            <View style={styles.switchRowItem}>
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="speedometer-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>10x Speed Acceleration</Text>
-              <Switch
-                value={settings.autoResume}
-                onValueChange={(v) => updateSetting('autoResume', v)}
-                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.switchRowItem}>
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="images-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Save Downloads to Gallery</Text>
-              <Switch
-                value={settings.saveToGallery}
-                onValueChange={(v) => updateSetting('saveToGallery', v)}
-                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-
-            <View style={styles.divider} />
-
-            <View style={styles.switchRowItem}>
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="swap-horizontal-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Proxy Server Mode</Text>
-              <Switch
-                value={settings.useProxy}
-                onValueChange={(v) => updateSetting('useProxy', v)}
-                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                thumbColor="#FFFFFF"
-              />
-            </View>
-          </View>
-
-          {/* Group 4: Support & Legal */}
+          {/* Group 3: Support & Legal */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
@@ -331,7 +275,7 @@ export default function SettingsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Group 5: Logout */}
+          {/* Group 4: Logout */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
@@ -518,12 +462,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 13,
-    gap: 14,
-  },
-  switchRowItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
     gap: 14,
   },
   iconCircle: {

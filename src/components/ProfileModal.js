@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  Switch,
   Alert,
   ScrollView,
   Linking,
@@ -25,11 +24,6 @@ GoogleSignin.configure({
 export default function ProfileModal({ visible, onClose, user, onUserUpdated, onOpenUpgrade, navigation }) {
   const insets = useSafeAreaInsets();
   const [loggingIn, setLoggingIn] = useState(false);
-
-  // Quick settings switches
-  const [highSpeedEnabled, setHighSpeedEnabled] = useState(true);
-  const [saveToGallery, setSaveToGallery] = useState(true);
-  const [useProxy, setUseProxy] = useState(true);
 
   const isLoggedIn = !!(user && user.email);
   const isPremium = user && (user.premiumStatus === 'premium' || (user.plan && user.plan !== 'free'));
@@ -216,7 +210,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
               </TouchableOpacity>
             </View>
 
-            {/* Group 2: Account & Downloads */}
+            {/* Group 2: Edit Profile & Downloads */}
             <View style={styles.groupCard}>
               <TouchableOpacity
                 style={styles.rowItem}
@@ -248,53 +242,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
               </TouchableOpacity>
             </View>
 
-            {/* Group 3: App Toggles & Preferences */}
-            <View style={styles.groupCard}>
-              <View style={styles.switchRowItem}>
-                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                  <Ionicons name="speedometer-outline" size={18} color="#27272A" />
-                </View>
-                <Text style={styles.rowLabel}>10x Speed Acceleration</Text>
-                <Switch
-                  value={highSpeedEnabled}
-                  onValueChange={setHighSpeedEnabled}
-                  trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.switchRowItem}>
-                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                  <Ionicons name="images-outline" size={18} color="#27272A" />
-                </View>
-                <Text style={styles.rowLabel}>Save Downloads to Gallery</Text>
-                <Switch
-                  value={saveToGallery}
-                  onValueChange={setSaveToGallery}
-                  trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-
-              <View style={styles.divider} />
-
-              <View style={styles.switchRowItem}>
-                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                  <Ionicons name="swap-horizontal-outline" size={18} color="#27272A" />
-                </View>
-                <Text style={styles.rowLabel}>Proxy Server Mode</Text>
-                <Switch
-                  value={useProxy}
-                  onValueChange={setUseProxy}
-                  trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                  thumbColor="#FFFFFF"
-                />
-              </View>
-            </View>
-
-            {/* Group 4: Support & Legal */}
+            {/* Group 3: Support & Legal */}
             <View style={styles.groupCard}>
               <TouchableOpacity
                 style={styles.rowItem}
@@ -329,7 +277,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
               </TouchableOpacity>
             </View>
 
-            {/* Group 5: Logout */}
+            {/* Group 4: Logout */}
             <View style={styles.groupCard}>
               <TouchableOpacity
                 style={styles.rowItem}
@@ -498,12 +446,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: 13,
-    gap: 14,
-  },
-  switchRowItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
     gap: 14,
   },
   iconCircle: {
