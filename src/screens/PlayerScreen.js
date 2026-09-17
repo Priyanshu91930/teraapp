@@ -136,7 +136,10 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
   // Video Complete Rewarded Ad (Disabled for Premium users)
   useEffect(() => {
-    if (isPremium) return;
+    if (isPremium) {
+      setVideoCompleteAdLoaded(false);
+      return;
+    }
     let completeAd = null;
     let timer = setTimeout(() => {
       try {
@@ -167,7 +170,10 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
   // Player Close Rewarded Ad (Disabled for Premium users)
   useEffect(() => {
-    if (isPremium) return;
+    if (isPremium) {
+      setPlayerCloseAdLoaded(false);
+      return;
+    }
     let closeAd = null;
     let timer = setTimeout(() => {
       try {
@@ -222,7 +228,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
         if (dur > 0 && cur >= dur - 0.8 && !videoCompleteShownRef.current) {
           videoCompleteShownRef.current = true;
-          if (videoCompleteAdRef.current && videoCompleteAdLoaded) {
+          if (!isPremium && videoCompleteAdRef.current && videoCompleteAdLoaded) {
             try {
               player.pause();
               setShowControls(true);
