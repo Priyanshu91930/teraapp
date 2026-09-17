@@ -173,6 +173,30 @@ export default function SettingsScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
 
+          {/* Group 0: Top Sign In with Google Card (Only when NOT logged in) */}
+          {!isLoggedIn && (
+            <View style={[styles.groupCard, { backgroundColor: '#FEF2F2', borderWidth: 1, borderColor: '#FCA5A5' }]}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={handleOneTapGoogleSignIn}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#EA4335' }]}>
+                  <Ionicons name="logo-google" size={18} color="#FFFFFF" />
+                </View>
+                <View style={styles.rowTextCol}>
+                  <Text style={[styles.rowLabel, { color: '#DC2626', fontWeight: '700', fontSize: 15 }]}>
+                    Sign In with Google
+                  </Text>
+                  <Text style={[styles.rowSubtitle, { color: '#991B1B' }]}>
+                    Sync your plan on App & Web
+                  </Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#DC2626" />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Group 1: Buy Premium & Manage Premium */}
           <View style={styles.groupCard}>
             <TouchableOpacity
@@ -212,19 +236,23 @@ export default function SettingsScreen({ navigation }) {
 
           {/* Group 2: Edit Profile & Downloads */}
           <View style={styles.groupCard}>
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={isLoggedIn ? () => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`) : handleOneTapGoogleSignIn}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="create-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>{isLoggedIn ? 'Edit Profile' : 'Sign In with Google'}</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
+            {isLoggedIn && (
+              <>
+                <TouchableOpacity
+                  style={styles.rowItem}
+                  activeOpacity={0.7}
+                  onPress={() => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`)}
+                >
+                  <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                    <Ionicons name="create-outline" size={18} color="#27272A" />
+                  </View>
+                  <Text style={styles.rowLabel}>Edit Profile</Text>
+                  <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+                </TouchableOpacity>
 
-            <View style={styles.divider} />
+                <View style={styles.divider} />
+              </>
+            )}
 
             <TouchableOpacity
               style={styles.rowItem}
@@ -268,22 +296,24 @@ export default function SettingsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Group 4: Logout */}
-          <View style={styles.groupCard}>
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={isLoggedIn ? handleSignOut : handleOneTapGoogleSignIn}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
-                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-              </View>
-              <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
-                {isLoggedIn ? 'Logout' : 'Sign In'}
-              </Text>
-              <Ionicons name="chevron-forward" size={18} color="#EF4444" />
-            </TouchableOpacity>
-          </View>
+          {/* Group 4: Logout (ONLY shown when logged in) */}
+          {isLoggedIn && (
+            <View style={styles.groupCard}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={handleSignOut}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+                  <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                </View>
+                <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
+                  Logout
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color="#EF4444" />
+              </TouchableOpacity>
+            </View>
+          )}
 
         </ScrollView>
       </View>
