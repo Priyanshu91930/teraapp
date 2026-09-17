@@ -34,7 +34,6 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
     setLoggingIn(true);
     try {
       await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
-      // Clear previous cached session so Google shows the account chooser sheet with all Gmails
       await GoogleSignin.signOut().catch(() => {});
       const response = await GoogleSignin.signIn();
       const userInfo = response.data ? response.data : response;
@@ -57,40 +56,11 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
     } catch (error) {
       console.log('Native Google Sign-In Error:', error);
       if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-        // User cancelled login flow
-      } else if (error.code === statusCodes.IN_PROGRESS) {
-        // Sign-in in progress
       } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
         Alert.alert('Google Play Services Error', 'Play Services not available or outdated.');
       } else {
         Alert.alert('Google Sign-In', error.message || 'Could not complete Google Sign-In.');
       }
-    } finally {
-      setLoggingIn(false);
-    }
-  }
-
-  async function handleQuickEmailLogin() {
-    const email = googleEmailInput.trim().toLowerCase();
-    if (!email || !email.includes('@')) {
-      Alert.alert('Invalid Google Email', 'Please enter a valid Gmail address.');
-      return;
-    }
-
-    setLoggingIn(true);
-    try {
-      const name = email.split('@')[0];
-      const updatedUser = await syncGoogleUser(email, name);
-      if (updatedUser) {
-        if (onUserUpdated) onUserUpdated(updatedUser);
-        setShowEmailFallback(false);
-        setGoogleEmailInput('');
-        Alert.alert('✅ Google Account Synced', `Signed in as ${updatedUser.email}`);
-      } else {
-        Alert.alert('Login Error', 'Could not sync Google account.');
-      }
-    } catch (e) {
-      Alert.alert('Error', e.message || 'Login failed.');
     } finally {
       setLoggingIn(false);
     }
@@ -121,30 +91,44 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.headerTitle}>User Account & Profile</Text>
+          <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.header}>
+            <View style={styles.headerTitleRow}>
+              <Ionicons name="person-circle" size={22} color="#6366F1" />
+              <Text style={styles.headerTitle}>User Account & Profile</Text>
+            </View>
             <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <Ionicons name="close" size={24} color="#64748B" />
+              <Ionicons name="close" size={22} color="#94A3B8" />
             </TouchableOpacity>
-          </View>
+          </LinearGradient>
 
-          <ScrollView contentContainerStyle={styles.body}>
+          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
             {/* User Profile Card */}
-            <View style={styles.profileCard}>
-              <View style={styles.avatarCircle}>
-                {user && user.avatar ? (
-                  <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
-                ) : (
-                  <Text style={styles.avatarInitial}>
-                    {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
-                  </Text>
+            <LinearGradient
+              colors={isPremium ? ['#1E1B4B', '#0F172A'] : ['#F8FAFC', '#F1F5F9']}
+              style={[styles.profileCard, isPremium && styles.profileCardPremium]}
+            >
+              {/* Glowing Avatar Container */}
+              <View style={[styles.avatarWrapper, isPremium && styles.avatarWrapperPremium]}>
+                <View style={styles.avatarCircle}>
+                  {user && user.avatar ? (
+                    <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
+                  ) : (
+                    <Text style={styles.avatarInitial}>
+                      {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
+                    </Text>
+                  )}
+                </View>
+                {isPremium && (
+                  <View style={styles.vipBadgeIcon}>
+                    <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
+                  </View>
                 )}
               </View>
 
-              <Text style={styles.userName}>
+              <Text style={[styles.userName, isPremium && styles.textWhite]}>
                 {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
               </Text>
-              <Text style={styles.userEmail}>
+              <Text style={[styles.userEmail, isPremium && styles.textMutedDark]}>
                 {isLoggedIn ? user.email : 'Sign in to sync your premium plan on App & Web'}
               </Text>
 
@@ -166,10 +150,54 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
               </View>
 
               {isPremium && user.premiumExpiresAt && (
-                <Text style={styles.expiryText}>
-                  Valid until: {new Date(user.premiumExpiresAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </Text>
+                <View style={styles.expiryBox}>
+                  <Ionicons name="calendar-outline" size={13} color="#10B981" />
+                  <Text style={styles.expiryText}>
+                    Valid until: {new Date(user.premiumExpiresAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </Text>
+                </View>
               )}
+            </LinearGradient>
+
+            {/* Plan Perks Grid */}
+            <View style={styles.perksCard}>
+              <Text style={styles.perksHeading}>
+                {isPremium ? '✨ Active Plan Benefits:' : '⚡ Upgrade Perks:'}
+              </Text>
+
+              <View style={styles.perksGrid}>
+                <View style={styles.perkItem}>
+                  <Ionicons name="sparkles-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
+                  <View style={styles.perkTextCol}>
+                    <Text style={styles.perkTitle}>100% Ad-Free</Text>
+                    <Text style={styles.perkDesc}>{isPremium ? 'Active across App & Web' : 'Zero ads experience'}</Text>
+                  </View>
+                </View>
+
+                <View style={styles.perkItem}>
+                  <Ionicons name="flash-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
+                  <View style={styles.perkTextCol}>
+                    <Text style={styles.perkTitle}>10x High Speed</Text>
+                    <Text style={styles.perkDesc}>Full HD Direct Download</Text>
+                  </View>
+                </View>
+
+                <View style={styles.perkItem}>
+                  <Ionicons name="play-circle-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
+                  <View style={styles.perkTextCol}>
+                    <Text style={styles.perkTitle}>1080p Web Player</Text>
+                    <Text style={styles.perkDesc}>Instant Browser Streaming</Text>
+                  </View>
+                </View>
+
+                <View style={styles.perkItem}>
+                  <Ionicons name="sync-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
+                  <View style={styles.perkTextCol}>
+                    <Text style={styles.perkTitle}>Web & App Sync</Text>
+                    <Text style={styles.perkDesc}>Same Gmail Access</Text>
+                  </View>
+                </View>
+              </View>
             </View>
 
             {/* 1-Tap Google Sign In */}
@@ -190,26 +218,26 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
               </TouchableOpacity>
             )}
 
-            {/* Upgrade to Premium Button */}
+            {/* Upgrade / Manage Plan Button */}
             <TouchableOpacity
-              activeOpacity={0.8}
+              activeOpacity={0.85}
               style={styles.upgradeBtn}
               onPress={() => {
                 onClose();
                 if (onOpenUpgrade) onOpenUpgrade();
               }}
             >
-              <LinearGradient colors={['#2563EB', '#4F46E5']} style={styles.upgradeGradient}>
+              <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.upgradeGradient}>
                 <Ionicons name="sparkles" size={18} color="#F59E0B" />
                 <Text style={styles.upgradeBtnText}>
-                  {isPremium ? 'Manage / Extend Plan' : 'Buy Premium Plan'}
+                  {isPremium ? 'Manage / Extend Subscription' : 'Upgrade to Premium'}
                 </Text>
               </LinearGradient>
             </TouchableOpacity>
 
             {/* Sync Notice */}
             <View style={styles.syncNotice}>
-              <Ionicons name="information-circle-outline" size={16} color="#3B82F6" />
+              <Ionicons name="shield-checkmark-outline" size={16} color="#3B82F6" />
               <Text style={styles.syncNoticeText}>
                 Purchased plan will automatically sync on Website (teraboxdownloader.co.in) using the same Gmail!
               </Text>
@@ -217,7 +245,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
 
             {/* Sign Out Button */}
             {isLoggedIn && (
-              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut}>
+              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.7}>
                 <Ionicons name="log-out-outline" size={18} color="#EF4444" />
                 <Text style={styles.signOutText}>Sign Out Account</Text>
               </TouchableOpacity>
@@ -232,15 +260,20 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    backgroundColor: 'rgba(15, 23, 42, 0.75)',
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
   container: {
     backgroundColor: '#FFFFFF',
     borderRadius: 24,
-    maxHeight: '85%',
+    maxHeight: '88%',
     overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 12,
   },
   header: {
     flexDirection: 'row',
@@ -248,19 +281,24 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     paddingHorizontal: 20,
     paddingVertical: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   headerTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
-    color: '#0F172A',
+    color: '#FFFFFF',
   },
   closeBtn: {
     padding: 4,
+    borderRadius: 16,
+    backgroundColor: 'rgba(255,255,255,0.1)',
   },
   body: {
-    padding: 20,
+    padding: 18,
   },
   profileCard: {
     alignItems: 'center',
@@ -269,30 +307,49 @@ const styles = StyleSheet.create({
     padding: 18,
     borderWidth: 1,
     borderColor: '#E2E8F0',
-    marginBottom: 16,
+    marginBottom: 14,
   },
-  avatarCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#2563EB',
-    justifyContent: 'center',
-    alignItems: 'center',
+  profileCardPremium: {
+    borderColor: 'rgba(99, 102, 241, 0.4)',
+  },
+  avatarWrapper: {
+    position: 'relative',
     marginBottom: 10,
   },
+  avatarWrapperPremium: {
+    borderRadius: 38,
+    borderWidth: 3,
+    borderColor: '#F59E0B',
+    padding: 2,
+  },
+  avatarCircle: {
+    width: 68,
+    height: 68,
+    borderRadius: 34,
+    backgroundColor: '#6366F1',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   avatarImg: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 68,
+    height: 68,
+    borderRadius: 34,
   },
   avatarInitial: {
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: 28,
+    fontWeight: '800',
     color: '#FFFFFF',
   },
+  vipBadgeIcon: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+  },
   userName: {
-    fontSize: 17,
-    fontWeight: '700',
+    fontSize: 18,
+    fontWeight: '800',
     color: '#0F172A',
   },
   userEmail: {
@@ -302,21 +359,33 @@ const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 10,
   },
+  textWhite: {
+    color: '#FFFFFF',
+  },
+  textMutedDark: {
+    color: '#94A3B8',
+  },
   badgeRow: {
-    marginTop: 4,
+    marginTop: 2,
   },
   statusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 5,
+    borderRadius: 14,
+    shadowColor: '#F59E0B',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    elevation: 4,
   },
   statusBadgeText: {
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.5,
   },
   freeBadge: {
     flexDirection: 'row',
@@ -332,11 +401,59 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#475569',
   },
+  expiryBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 10,
+    marginTop: 10,
+  },
   expiryText: {
     fontSize: 11,
     color: '#10B981',
-    fontWeight: '600',
-    marginTop: 8,
+    fontWeight: '700',
+  },
+  perksCard: {
+    backgroundColor: '#F8FAFC',
+    borderRadius: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    marginBottom: 14,
+  },
+  perksHeading: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#334155',
+    marginBottom: 10,
+  },
+  perksGrid: {
+    gap: 10,
+  },
+  perkItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    backgroundColor: '#FFFFFF',
+    padding: 10,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#F1F5F9',
+  },
+  perkTextCol: {
+    flex: 1,
+  },
+  perkTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F172A',
+  },
+  perkDesc: {
+    fontSize: 11,
+    color: '#64748B',
   },
   officialGoogleBtn: {
     flexDirection: 'row',
@@ -361,85 +478,19 @@ const styles = StyleSheet.create({
     resizeMode: 'contain',
   },
   officialGoogleBtnText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 15,
+    fontWeight: '700',
     color: '#3C4043',
   },
-  fallbackToggleBtn: {
-    alignItems: 'center',
-    paddingVertical: 8,
-    marginBottom: 12,
-  },
-  fallbackToggleText: {
-    fontSize: 12,
-    color: '#64748B',
-    textDecorationLine: 'underline',
-  },
-  switchAccountBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    marginBottom: 12,
-  },
-  switchAccountText: {
-    fontSize: 13,
-    color: '#2563EB',
-    fontWeight: '600',
-  },
-  emailInputCard: {
-    backgroundColor: '#F1F5F9',
-    borderRadius: 14,
-    padding: 14,
-    marginBottom: 12,
-  },
-  emailInputLabel: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#334155',
-    marginBottom: 6,
-  },
-  input: {
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1,
-    borderColor: '#CBD5E1',
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
-    color: '#0F172A',
-  },
-  emailInputActions: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: 10,
-    marginTop: 10,
-  },
-  cancelInputBtn: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-  },
-  cancelInputText: {
-    fontSize: 13,
-    color: '#64748B',
-    fontWeight: '600',
-  },
-  submitInputBtn: {
-    backgroundColor: '#2563EB',
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-  },
-  submitInputText: {
-    fontSize: 13,
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
   upgradeBtn: {
-    borderRadius: 14,
+    borderRadius: 16,
     overflow: 'hidden',
-    marginBottom: 14,
+    marginBottom: 12,
+    shadowColor: '#6366F1',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.35,
+    shadowRadius: 8,
+    elevation: 6,
   },
   upgradeGradient: {
     flexDirection: 'row',
@@ -450,7 +501,7 @@ const styles = StyleSheet.create({
   },
   upgradeBtnText: {
     fontSize: 15,
-    fontWeight: '700',
+    fontWeight: '800',
     color: '#FFFFFF',
   },
   syncNotice: {
@@ -459,13 +510,14 @@ const styles = StyleSheet.create({
     gap: 8,
     backgroundColor: '#EFF6FF',
     padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
+    borderRadius: 12,
+    marginBottom: 12,
   },
   syncNoticeText: {
     fontSize: 11,
     color: '#1E40AF',
     flex: 1,
+    lineHeight: 15,
   },
   signOutBtn: {
     flexDirection: 'row',
@@ -473,10 +525,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     paddingVertical: 10,
+    backgroundColor: '#FEF2F2',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#FEE2E2',
   },
   signOutText: {
     fontSize: 13,
     color: '#EF4444',
-    fontWeight: '600',
+    fontWeight: '700',
   },
 });
