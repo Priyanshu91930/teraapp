@@ -181,10 +181,7 @@ export default function SettingsScreen({ navigation }) {
               onPress={handleOneTapGoogleSignIn}
             >
               <View style={styles.googleIconTile}>
-                <Image
-                  source={{ uri: 'https://upload.wikimedia.org/wikipedia/commons/thumb/c/c1/Google_%22G%22_logo.svg/1200px-Google_%22G%22_logo.svg.png' }}
-                  style={styles.googleLogoImg}
-                />
+                <Ionicons name="logo-google" size={24} color="#4285F4" />
               </View>
               <Text style={styles.googleBtnText}>Sign in with Google</Text>
             </TouchableOpacity>
