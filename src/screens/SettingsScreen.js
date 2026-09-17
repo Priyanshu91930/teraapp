@@ -1,37 +1,36 @@
 import React, { useEffect, useState } from 'react';
-import { ScrollView, StyleSheet, Switch, Text, TextInput, View, Platform, TouchableOpacity } from 'react-native';
+import {
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  View,
+  TouchableOpacity,
+  Image,
+  Alert,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Screen from '../components/Screen';
-import Button from '../components/Button';
-import { colors, radius, spacing } from '../theme';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
+import { getStoredUser, checkIsPremium, syncGoogleUser, logoutUser } from '../services/authService';
 import { getSettings, saveSettings, DEFAULT_SETTINGS } from '../services/storage';
+import SubscriptionModal from '../components/SubscriptionModal';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
-import { getStoredUser, checkIsPremium } from '../services/authService';
 
-function Section({ label, children }) {
-  return (
-    <View style={styles.section}>
-      <Text style={styles.sectionLabel}>{label}</Text>
-      <View style={styles.sectionBody}>{children}</View>
-    </View>
-  );
-}
+GoogleSignin.configure({
+  webClientId: '127142107297-eqjrnnvko66pn6014ndesqimqbtof3ll.apps.googleusercontent.com',
+  offlineAccess: false,
+});
 
-function SettingRow({ icon, label, description, children }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      {description ? <Text style={styles.rowDesc}>{description}</Text> : null}
-      <View style={styles.rowControl}>{children}</View>
-    </View>
-  );
-}
-
-export default function SettingsScreen() {
-  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
-  const [saved, setSaved] = useState(false);
+export default function SettingsScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [user, setUser] = useState(null);
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   useEffect(() => {
     getSettings().then(setSettings);
@@ -40,101 +39,340 @@ export default function SettingsScreen() {
     });
   }, []);
 
+  const isLoggedIn = !!(user && user.email);
   const isPremiumUser = checkIsPremium(user);
 
-  function update(key, value) {
-    setSettings((prev) => ({ ...prev, [key]: value }));
-    setSaved(false);
+  function updateSetting(key, value) {
+    const updated = { ...settings, [key]: value };
+    setSettings(updated);
+    saveSettings(updated);
   }
 
-  async function handleSave() {
-    await saveSettings(settings);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  async function handleOneTapGoogleSignIn() {
+    setLoggingIn(true);
+    try {
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+      await GoogleSignin.signOut().catch(() => {});
+      const response = await GoogleSignin.signIn();
+      const userInfo = response.data ? response.data : response;
+      const userObj = userInfo.user || userInfo;
+
+      if (userObj && userObj.email) {
+        const updatedUser = await syncGoogleUser(
+          userObj.email,
+          userObj.name || userObj.givenName || userObj.email.split('@')[0],
+          userObj.photo || '',
+          userObj.id || ''
+        );
+        if (updatedUser) {
+          setUser(updatedUser);
+          Alert.alert('✅ Account Synced', `Signed in as ${updatedUser.email}`);
+        } else {
+          Alert.alert('Login Error', 'Failed to sync Google user with server.');
+        }
+      }
+    } catch (error) {
+      console.log('Native Google Sign-In Error:', error);
+      if (error.code !== statusCodes.SIGN_IN_CANCELLED) {
+        Alert.alert('Google Sign-In', error.message || 'Could not complete Google Sign-In.');
+      }
+    } finally {
+      setLoggingIn(false);
+    }
+  }
+
+  async function handleSignOut() {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            await logoutUser();
+            await GoogleSignin.signOut().catch(() => {});
+            setUser(null);
+          },
+        },
+      ]
+    );
   }
 
   return (
-    <Screen>
-      <View style={styles.header}>
-        <Text style={styles.title}>Settings</Text>
-      </View>
-      <ScrollView contentContainerStyle={styles.content}>
-
-        <Section label="Downloads">
-          <SettingRow
-            icon="options"
-            label="Quality"
-            description="Preferred quality for resolved links."
+    <View style={styles.root}>
+      {/* Top Header Banner */}
+      <View style={[styles.darkHeader, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.circleBtn}
+            onPress={() => navigation?.navigate('Home')}
+            activeOpacity={0.7}
           >
-            <View style={styles.segment}>
-              {['auto', 'hd', 'sd'].map((q) => (
-                <View
-                  key={q}
-                  style={[
-                    styles.segmentItem,
-                    settings.downloadQuality === q && styles.segmentItemActive,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      settings.downloadQuality === q && styles.segmentTextActive,
-                    ]}
-                    onPress={() => update('downloadQuality', q)}
-                  >
-                    {q.toUpperCase()}
-                  </Text>
-                </View>
-              ))}
+            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Account</Text>
+          <TouchableOpacity
+            style={styles.circleBtn}
+            onPress={() => Alert.alert('Notifications', 'No new notifications.')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+            <View style={styles.bellBadgeDot} />
+          </TouchableOpacity>
+        </View>
+
+        {/* User Profile Center */}
+        <View style={styles.userCenter}>
+          <View style={styles.avatarWrapper}>
+            <View style={styles.avatarCircle}>
+              {user && user.avatar ? (
+                <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
+              ) : (
+                <Text style={styles.avatarInitial}>
+                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'M'}
+                </Text>
+              )}
             </View>
-          </SettingRow>
+            <TouchableOpacity
+              style={styles.cameraIconBadge}
+              activeOpacity={0.8}
+              onPress={isLoggedIn ? undefined : handleOneTapGoogleSignIn}
+            >
+              <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
+            </TouchableOpacity>
+          </View>
 
-          <SettingRow
-            icon="images"
-            label="Save to Gallery"
-            description="Open the share sheet after download to save to gallery."
-          >
-            <Switch
-              value={settings.saveToGallery}
-              onValueChange={(v) => update('saveToGallery', v)}
-              trackColor={{ true: colors.primary, false: colors.surface }}
-              thumbColor={colors.white}
-            />
-          </SettingRow>
+          <Text style={styles.userName}>
+            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Marie T Wiedman'}
+          </Text>
+          <Text style={styles.userEmail}>
+            {isLoggedIn ? user.email : 'Marie@gmail.com'}
+          </Text>
 
-          <SettingRow
-            icon="refresh"
-            label="Auto-resume"
-            description="Automatically resume interrupted downloads."
-          >
-            <Switch
-              value={settings.autoResume}
-              onValueChange={(v) => update('autoResume', v)}
-              trackColor={{ true: colors.primary, false: colors.surface }}
-              thumbColor={colors.white}
-            />
-          </SettingRow>
+          <View style={styles.badgeRow}>
+            {isPremiumUser ? (
+              <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.vipBadge}>
+                <Ionicons name="star" size={11} color="#FFFFFF" />
+                <Text style={styles.vipBadgeText}>VIP PREMIUM MEMBER</Text>
+              </LinearGradient>
+            ) : (
+              <TouchableOpacity
+                style={styles.upgradeBadge}
+                activeOpacity={0.8}
+                onPress={() => setShowSubscriptionModal(true)}
+              >
+                <Ionicons name="flash" size={11} color="#6366F1" />
+                <Text style={styles.upgradeBadgeText}>UPGRADE TO VIP</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      </View>
 
-          <SettingRow
-            icon="swap-horizontal"
-            label="Proxy downloads"
-            description="Route TeraBox downloads through the server to bypass ISP/DNS blocks."
-          >
-            <Switch
-              value={settings.useProxy}
-              onValueChange={(v) => update('useProxy', v)}
-              trackColor={{ true: colors.primary, false: colors.surface }}
-              thumbColor={colors.white}
-            />
-          </SettingRow>
-        </Section>
+      {/* White Curved Sheet Container */}
+      <View style={styles.whiteSheet}>
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingBottom: Math.max(insets.bottom, 20) + 20 }
+          ]}
+          showsVerticalScrollIndicator={false}
+        >
 
-        <Button title={saved ? 'Saved ✓' : 'Save Settings'} onPress={handleSave} />
+          {/* Group 1: Wallet */}
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => setShowSubscriptionModal(true)}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="wallet-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Wallet</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+          </View>
 
-        <Text style={styles.footer}>
-          TeraBox Downloader — Free & unlimited. Use responsibly.
-        </Text>
-      </ScrollView>
+          {/* Group 2: Edit Profile, Blocked Users, Task Center, Activities */}
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={isLoggedIn ? () => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`) : handleOneTapGoogleSignIn}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="create-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>{isLoggedIn ? 'Edit Profile' : 'Sign In with Google'}</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Alert.alert('Blocked Users', 'You have no blocked users.')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="person-remove-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>View Blocked Users</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Alert.alert('Task Center', 'Daily Check-in Complete! 100 Bonus Download Credits Available.')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="clipboard-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Task Center</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Alert.alert('Activities', 'Your TeraBox downloader is active & running at peak speed.')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="grid-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Activities</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Group 3: Settings, Level, Favorites, Downloads */}
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => setShowAppSettings(!showAppSettings)}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="settings-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Settings</Text>
+              <Ionicons name={showAppSettings ? "chevron-down" : "chevron-forward"} size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            {/* Expandable app toggles */}
+            {showAppSettings && (
+              <View style={styles.expandSettingsBox}>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchText}>Save Downloads to Gallery</Text>
+                  <Switch
+                    value={settings.saveToGallery}
+                    onValueChange={(v) => updateSetting('saveToGallery', v)}
+                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchText}>Auto-Resume Downloads</Text>
+                  <Switch
+                    value={settings.autoResume}
+                    onValueChange={(v) => updateSetting('autoResume', v)}
+                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+                <View style={styles.switchRow}>
+                  <Text style={styles.switchText}>Proxy Server Mode</Text>
+                  <Switch
+                    value={settings.useProxy}
+                    onValueChange={(v) => updateSetting('useProxy', v)}
+                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                    thumbColor="#FFFFFF"
+                  />
+                </View>
+              </View>
+            )}
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Alert.alert('Level', isPremiumUser ? 'Level 10 VIP Member' : 'Level 1 Standard User')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="ribbon-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Level</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => navigation?.navigate('History')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="heart-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Favorites</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => navigation?.navigate('Downloads')}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="download-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Downloads</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Group 4: Logout */}
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={isLoggedIn ? handleSignOut : handleOneTapGoogleSignIn}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+              </View>
+              <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
+                {isLoggedIn ? 'Logout' : 'Sign In'}
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
+
+        </ScrollView>
+      </View>
+
+      <SubscriptionModal
+        visible={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        user={user}
+        onPaymentSuccess={(updatedEmail) => {
+          getStoredUser().then(setUser);
+          setShowSubscriptionModal(false);
+        }}
+      />
+
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>
           <BannerAd
@@ -143,194 +381,194 @@ export default function SettingsScreen() {
           />
         </View>
       )}
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  header: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.md,
-    marginBottom: spacing.xs,
-  },
-  bannerContainer: {
-    alignItems: 'center',
-    backgroundColor: '#fff',
-  },
-  content: {
-    paddingHorizontal: spacing.md,
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  title: {
-    color: colors.text,
-    fontSize: 26,
-    fontWeight: '800',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
-  },
-  section: {
-    marginBottom: spacing.lg,
-  },
-  sectionLabel: {
-    color: colors.textMuted,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: spacing.sm,
-  },
-  sectionBody: {
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    padding: spacing.md,
-  },
-  row: {
-    marginBottom: spacing.md,
-  },
-  rowLabel: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '600',
-  },
-  rowDesc: {
-    color: colors.textMuted,
-    fontSize: 12,
-    marginTop: 2,
-  },
-  rowControl: {
-    marginTop: spacing.sm,
-  },
-  input: {
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    color: colors.text,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: 14,
-  },
-  segment: {
-    flexDirection: 'row',
-    backgroundColor: colors.surface,
-    borderRadius: radius.sm,
-    overflow: 'hidden',
-  },
-  segmentItem: {
+  root: {
     flex: 1,
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
+    backgroundColor: '#18181B',
   },
-  segmentItemActive: {
-    backgroundColor: colors.primary,
+  darkHeader: {
+    backgroundColor: '#18181B',
+    paddingHorizontal: 20,
+    paddingBottom: 24,
   },
-  segmentText: {
-    color: colors.textMuted,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  segmentTextActive: {
-    color: colors.white,
-  },
-  footer: {
-    color: colors.textMuted,
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: spacing.xl,
-  },
-  statsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.md,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  statsHeader: {
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: '#F1F5F9',
-    paddingBottom: spacing.sm,
+    marginBottom: 16,
   },
-  statsLabel: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#64748B',
-    letterSpacing: 1.2,
-  },
-  statsTitle: {
-    fontSize: 16,
-    fontWeight: '800',
-    color: '#0F172A',
-    marginTop: 2,
-  },
-  updatedRow: {
-    flexDirection: 'row',
+  circleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
-    backgroundColor: '#ECFDF5',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    justifyContent: 'center',
+    position: 'relative',
   },
-  pulseDot: {
+  bellBadgeDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: '#10B981',
-    marginRight: 4,
+    backgroundColor: '#EF4444',
   },
-  updatedText: {
-    fontSize: 10,
-    color: '#047857',
+  headerTitle: {
+    fontSize: 18,
     fontWeight: '700',
+    color: '#FFFFFF',
   },
-  statsRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  userCenter: {
+    alignItems: 'center',
+    marginTop: 4,
   },
-  statBox: {
-    width: '48.5%',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    padding: 12,
+  avatarWrapper: {
     position: 'relative',
-    overflow: 'hidden',
+    marginBottom: 12,
   },
-  statIconWrap: {
-    width: 32,
-    height: 32,
-    borderRadius: 8,
+  avatarCircle: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#3F3F46',
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImg: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+  },
+  avatarInitial: {
+    fontSize: 32,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  cameraIconBadge: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  userName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  userEmail: {
+    fontSize: 13,
+    color: '#A1A1AA',
+    marginTop: 2,
     marginBottom: 8,
   },
-  barIndicator: {
-    position: 'absolute',
-    top: 14,
-    right: 12,
-    width: 28,
-    height: 4,
-    borderRadius: 2,
+  badgeRow: {
+    marginTop: 2,
   },
-  statNum: {
-    fontSize: 18,
+  vipBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  vipBadgeText: {
+    fontSize: 10,
     fontWeight: '800',
-    color: '#0F172A',
-    letterSpacing: -0.5,
-  },
-  statBoxLabel: {
-    fontSize: 9,
-    fontWeight: '700',
-    color: '#64748B',
-    marginTop: 4,
+    color: '#FFFFFF',
     letterSpacing: 0.5,
+  },
+  upgradeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#6366F1',
+  },
+  upgradeBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#818CF8',
+    letterSpacing: 0.5,
+  },
+  whiteSheet: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
+  scrollContent: {
+    padding: 16,
+    gap: 12,
+  },
+  groupCard: {
+    backgroundColor: '#F4F4F6',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  rowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 13,
+    gap: 14,
+  },
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  rowLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#18181B',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E4E4E7',
+    marginLeft: 50,
+  },
+  expandSettingsBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 4,
+    gap: 10,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switchText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#27272A',
+  },
+  bannerContainer: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
 });

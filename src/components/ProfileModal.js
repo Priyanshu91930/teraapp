@@ -6,14 +6,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Image,
-  TextInput,
-  ActivityIndicator,
+  Switch,
   Alert,
   ScrollView,
   Linking,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { syncGoogleUser, logoutUser } from '../services/authService';
 
@@ -22,10 +23,15 @@ GoogleSignin.configure({
   offlineAccess: false,
 });
 
-export default function ProfileModal({ visible, onClose, user, onUserUpdated, onOpenUpgrade }) {
-  const [googleEmailInput, setGoogleEmailInput] = useState('');
-  const [showEmailFallback, setShowEmailFallback] = useState(false);
+export default function ProfileModal({ visible, onClose, user, onUserUpdated, onOpenUpgrade, navigation }) {
+  const insets = useSafeAreaInsets();
   const [loggingIn, setLoggingIn] = useState(false);
+  const [showAppSettings, setShowAppSettings] = useState(false);
+
+  // App Toggles
+  const [highSpeedEnabled, setHighSpeedEnabled] = useState(true);
+  const [autoPlayEnabled, setAutoPlayEnabled] = useState(true);
+  const [saveToGallery, setSaveToGallery] = useState(true);
 
   const isLoggedIn = !!(user && user.email);
   const isPremium = user && (user.premiumStatus === 'premium' || (user.plan && user.plan !== 'free'));
@@ -48,17 +54,14 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
         );
         if (updatedUser) {
           if (onUserUpdated) onUserUpdated(updatedUser);
-          Alert.alert('✅ Google Account Synced', `Signed in as ${updatedUser.email}`);
+          Alert.alert('✅ Account Synced', `Signed in as ${updatedUser.email}`);
         } else {
           Alert.alert('Login Error', 'Failed to sync Google user with server.');
         }
       }
     } catch (error) {
       console.log('Native Google Sign-In Error:', error);
-      if (error.code === statusCodes.SIGN_IN_CANCELLED) {
-      } else if (error.code === statusCodes.PLAY_SERVICES_NOT_AVAILABLE) {
-        Alert.alert('Google Play Services Error', 'Play Services not available or outdated.');
-      } else {
+      if (error.code !== statusCodes.SIGN_IN_CANCELLED) {
         Alert.alert('Google Sign-In', error.message || 'Could not complete Google Sign-In.');
       }
     } finally {
@@ -87,169 +90,272 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
   }
 
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
-      <View style={styles.overlay}>
-        <View style={styles.container}>
-          {/* Header */}
-          <LinearGradient colors={['#0F172A', '#1E293B']} style={styles.header}>
-            <View style={styles.headerTitleRow}>
-              <Ionicons name="person-circle" size={22} color="#6366F1" />
-              <Text style={styles.headerTitle}>User Account & Profile</Text>
-            </View>
-            <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
-              <Ionicons name="close" size={22} color="#94A3B8" />
+    <Modal visible={visible} animationType="slide" transparent={false} onRequestClose={onClose}>
+      <View style={styles.root}>
+        {/* Dark Top Header Banner */}
+        <View style={[styles.darkHeader, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+          {/* Header Bar */}
+          <View style={styles.headerBar}>
+            <TouchableOpacity style={styles.circleBtn} onPress={onClose} activeOpacity={0.7}>
+              <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
             </TouchableOpacity>
-          </LinearGradient>
+            <Text style={styles.headerTitle}>Account</Text>
+            <TouchableOpacity style={styles.circleBtn} onPress={() => Alert.alert('Notifications', 'No new notifications.')} activeOpacity={0.7}>
+              <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
+              <View style={styles.bellBadgeDot} />
+            </TouchableOpacity>
+          </View>
 
-          <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
-            {/* User Profile Card */}
-            <LinearGradient
-              colors={isPremium ? ['#1E1B4B', '#0F172A'] : ['#F8FAFC', '#F1F5F9']}
-              style={[styles.profileCard, isPremium && styles.profileCardPremium]}
-            >
-              {/* Glowing Avatar Container */}
-              <View style={[styles.avatarWrapper, isPremium && styles.avatarWrapperPremium]}>
-                <View style={styles.avatarCircle}>
-                  {user && user.avatar ? (
-                    <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
-                  ) : (
-                    <Text style={styles.avatarInitial}>
-                      {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
-                    </Text>
-                  )}
-                </View>
-                {isPremium && (
-                  <View style={styles.vipBadgeIcon}>
-                    <Ionicons name="checkmark-circle" size={20} color="#F59E0B" />
-                  </View>
-                )}
-              </View>
-
-              <Text style={[styles.userName, isPremium && styles.textWhite]}>
-                {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
-              </Text>
-              <Text style={[styles.userEmail, isPremium && styles.textMutedDark]}>
-                {isLoggedIn ? user.email : 'Sign in to sync your premium plan on App & Web'}
-              </Text>
-
-              {/* Status Badge */}
-              <View style={styles.badgeRow}>
-                {isPremium ? (
-                  <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.statusBadge}>
-                    <Ionicons name="star" size={14} color="#FFFFFF" />
-                    <Text style={styles.statusBadgeText}>
-                      PREMIUM ACTIVE ({user.plan ? user.plan.toUpperCase() : 'VIP'})
-                    </Text>
-                  </LinearGradient>
+          {/* User Info Center */}
+          <View style={styles.userCenter}>
+            <View style={styles.avatarWrapper}>
+              <View style={styles.avatarCircle}>
+                {user && user.avatar ? (
+                  <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
                 ) : (
-                  <View style={styles.freeBadge}>
-                    <Ionicons name="person-outline" size={14} color="#64748B" />
-                    <Text style={styles.freeBadgeText}>FREE PLAN</Text>
-                  </View>
+                  <Text style={styles.avatarInitial}>
+                    {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'M'}
+                  </Text>
                 )}
               </View>
+              <TouchableOpacity
+                style={styles.cameraIconBadge}
+                activeOpacity={0.8}
+                onPress={isLoggedIn ? undefined : handleOneTapGoogleSignIn}
+              >
+                <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
 
-              {isPremium && user.premiumExpiresAt && (
-                <View style={styles.expiryBox}>
-                  <Ionicons name="calendar-outline" size={13} color="#10B981" />
-                  <Text style={styles.expiryText}>
-                    Valid until: {new Date(user.premiumExpiresAt).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })}
-                  </Text>
+            <Text style={styles.userName}>
+              {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Marie T Wiedman'}
+            </Text>
+            <Text style={styles.userEmail}>
+              {isLoggedIn ? user.email : 'Marie@gmail.com'}
+            </Text>
+
+            {/* VIP Status Badge */}
+            <View style={styles.badgeRow}>
+              {isPremium ? (
+                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.vipBadge}>
+                  <Ionicons name="star" size={11} color="#FFFFFF" />
+                  <Text style={styles.vipBadgeText}>VIP PREMIUM MEMBER</Text>
+                </LinearGradient>
+              ) : (
+                <TouchableOpacity
+                  style={styles.upgradeBadge}
+                  activeOpacity={0.8}
+                  onPress={() => {
+                    onClose();
+                    if (onOpenUpgrade) onOpenUpgrade();
+                  }}
+                >
+                  <Ionicons name="flash" size={11} color="#6366F1" />
+                  <Text style={styles.upgradeBadgeText}>UPGRADE TO VIP</Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          </View>
+        </View>
+
+        {/* White Curved Sheet Container */}
+        <View style={styles.whiteSheet}>
+          <ScrollView
+            contentContainerStyle={[
+              styles.scrollContent,
+              { paddingBottom: Math.max(insets.bottom, 20) + 20 }
+            ]}
+            showsVerticalScrollIndicator={false}
+          >
+
+            {/* Group 1: Wallet */}
+            <View style={styles.groupCard}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  onClose();
+                  if (onOpenUpgrade) onOpenUpgrade();
+                }}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="wallet-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Wallet</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Group 2: Profile & Tasks */}
+            <View style={styles.groupCard}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={isLoggedIn ? () => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`) : handleOneTapGoogleSignIn}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="create-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>{isLoggedIn ? 'Edit Profile' : 'Sign In with Google'}</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Blocked Users', 'You have no blocked users.')}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="person-remove-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>View Blocked Users</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Task Center', 'Daily Check-in Complete! 100 Bonus Download Credits Available.')}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="clipboard-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Task Center</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Activities', 'Your TeraBox downloader is active & running at peak speed.')}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="grid-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Activities</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+            </View>
+
+            {/* Group 3: Settings, Level, Favorites, Downloads */}
+            <View style={styles.groupCard}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => setShowAppSettings(!showAppSettings)}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="settings-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Settings</Text>
+                <Ionicons name={showAppSettings ? "chevron-down" : "chevron-forward"} size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+
+              {/* Expandable settings options */}
+              {showAppSettings && (
+                <View style={styles.expandSettingsBox}>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchText}>10x High Speed Acceleration</Text>
+                    <Switch
+                      value={highSpeedEnabled}
+                      onValueChange={setHighSpeedEnabled}
+                      trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchText}>1080p HD Video Player</Text>
+                    <Switch
+                      value={autoPlayEnabled}
+                      onValueChange={setAutoPlayEnabled}
+                      trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
+                  <View style={styles.switchRow}>
+                    <Text style={styles.switchText}>Save Downloads to Gallery</Text>
+                    <Switch
+                      value={saveToGallery}
+                      onValueChange={setSaveToGallery}
+                      trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                      thumbColor="#FFFFFF"
+                    />
+                  </View>
                 </View>
               )}
-            </LinearGradient>
 
-            {/* Plan Perks Grid */}
-            <View style={styles.perksCard}>
-              <Text style={styles.perksHeading}>
-                {isPremium ? '✨ Active Plan Benefits:' : '⚡ Upgrade Perks:'}
-              </Text>
+              <View style={styles.divider} />
 
-              <View style={styles.perksGrid}>
-                <View style={styles.perkItem}>
-                  <Ionicons name="sparkles-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
-                  <View style={styles.perkTextCol}>
-                    <Text style={styles.perkTitle}>100% Ad-Free</Text>
-                    <Text style={styles.perkDesc}>{isPremium ? 'Active across App & Web' : 'Zero ads experience'}</Text>
-                  </View>
-                </View>
-
-                <View style={styles.perkItem}>
-                  <Ionicons name="flash-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
-                  <View style={styles.perkTextCol}>
-                    <Text style={styles.perkTitle}>10x High Speed</Text>
-                    <Text style={styles.perkDesc}>Full HD Direct Download</Text>
-                  </View>
-                </View>
-
-                <View style={styles.perkItem}>
-                  <Ionicons name="play-circle-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
-                  <View style={styles.perkTextCol}>
-                    <Text style={styles.perkTitle}>1080p Web Player</Text>
-                    <Text style={styles.perkDesc}>Instant Browser Streaming</Text>
-                  </View>
-                </View>
-
-                <View style={styles.perkItem}>
-                  <Ionicons name="sync-outline" size={18} color={isPremium ? "#10B981" : "#6366F1"} />
-                  <View style={styles.perkTextCol}>
-                    <Text style={styles.perkTitle}>Web & App Sync</Text>
-                    <Text style={styles.perkDesc}>Same Gmail Access</Text>
-                  </View>
-                </View>
-              </View>
-            </View>
-
-            {/* 1-Tap Google Sign In */}
-            {!isLoggedIn && (
               <TouchableOpacity
-                activeOpacity={0.85}
-                style={styles.officialGoogleBtn}
-                onPress={handleOneTapGoogleSignIn}
-                disabled={loggingIn}
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => Alert.alert('Level', isPremium ? 'Level 10 VIP Member' : 'Level 1 Standard User')}
               >
-                <Image
-                  source={{ uri: 'https://developers.google.com/identity/images/g-logo.png' }}
-                  style={styles.officialGoogleLogo}
-                />
-                <Text style={styles.officialGoogleBtnText}>
-                  {loggingIn ? 'Connecting...' : 'Sign in with Google'}
-                </Text>
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="ribbon-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Level</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
               </TouchableOpacity>
-            )}
 
-            {/* Upgrade / Manage Plan Button */}
-            <TouchableOpacity
-              activeOpacity={0.85}
-              style={styles.upgradeBtn}
-              onPress={() => {
-                onClose();
-                if (onOpenUpgrade) onOpenUpgrade();
-              }}
-            >
-              <LinearGradient colors={['#6366F1', '#4F46E5']} style={styles.upgradeGradient}>
-                <Ionicons name="sparkles" size={18} color="#F59E0B" />
-                <Text style={styles.upgradeBtnText}>
-                  {isPremium ? 'Manage / Extend Subscription' : 'Upgrade to Premium'}
-                </Text>
-              </LinearGradient>
-            </TouchableOpacity>
+              <View style={styles.divider} />
 
-            {/* Sync Notice */}
-            <View style={styles.syncNotice}>
-              <Ionicons name="shield-checkmark-outline" size={16} color="#3B82F6" />
-              <Text style={styles.syncNoticeText}>
-                Purchased plan will automatically sync on Website (teraboxdownloader.co.in) using the same Gmail!
-              </Text>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  onClose();
+                  if (navigation) navigation.navigate('History');
+                }}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="heart-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Favorites</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
+
+              <View style={styles.divider} />
+
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={() => {
+                  onClose();
+                  if (navigation) navigation.navigate('Downloads');
+                }}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                  <Ionicons name="download-outline" size={18} color="#27272A" />
+                </View>
+                <Text style={styles.rowLabel}>Downloads</Text>
+                <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+              </TouchableOpacity>
             </View>
 
-            {/* Sign Out Button */}
-            {isLoggedIn && (
-              <TouchableOpacity style={styles.signOutBtn} onPress={handleSignOut} activeOpacity={0.7}>
-                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
-                <Text style={styles.signOutText}>Sign Out Account</Text>
+            {/* Group 4: Logout */}
+            <View style={styles.groupCard}>
+              <TouchableOpacity
+                style={styles.rowItem}
+                activeOpacity={0.7}
+                onPress={isLoggedIn ? handleSignOut : handleOneTapGoogleSignIn}
+              >
+                <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+                  <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                </View>
+                <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
+                  {isLoggedIn ? 'Logout' : 'Sign In'}
+                </Text>
+                <Ionicons name="chevron-forward" size={18} color="#EF4444" />
               </TouchableOpacity>
-            )}
+            </View>
+
           </ScrollView>
         </View>
       </View>
@@ -258,281 +364,185 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
 }
 
 const styles = StyleSheet.create({
-  overlay: {
+  root: {
     flex: 1,
-    backgroundColor: 'rgba(15, 23, 42, 0.75)',
-    justifyContent: 'center',
+    backgroundColor: '#18181B',
+  },
+  darkHeader: {
+    backgroundColor: '#18181B',
     paddingHorizontal: 20,
+    paddingBottom: 24,
   },
-  container: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    maxHeight: '88%',
-    overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.3,
-    shadowRadius: 20,
-    elevation: 12,
-  },
-  header: {
+  headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 16,
+    marginBottom: 16,
   },
-  headerTitleRow: {
-    flexDirection: 'row',
+  circleBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255, 255, 255, 0.12)',
     alignItems: 'center',
-    gap: 8,
+    justifyContent: 'center',
+    position: 'relative',
+  },
+  bellBadgeDot: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#EF4444',
   },
   headerTitle: {
-    fontSize: 17,
+    fontSize: 18,
     fontWeight: '700',
     color: '#FFFFFF',
   },
-  closeBtn: {
-    padding: 4,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-  },
-  body: {
-    padding: 18,
-  },
-  profileCard: {
+  userCenter: {
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderRadius: 20,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 14,
-  },
-  profileCardPremium: {
-    borderColor: 'rgba(99, 102, 241, 0.4)',
+    marginTop: 4,
   },
   avatarWrapper: {
     position: 'relative',
-    marginBottom: 10,
-  },
-  avatarWrapperPremium: {
-    borderRadius: 38,
-    borderWidth: 3,
-    borderColor: '#F59E0B',
-    padding: 2,
+    marginBottom: 12,
   },
   avatarCircle: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
-    backgroundColor: '#6366F1',
-    justifyContent: 'center',
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: '#3F3F46',
     alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   avatarImg: {
-    width: 68,
-    height: 68,
-    borderRadius: 34,
+    width: 76,
+    height: 76,
+    borderRadius: 38,
   },
   avatarInitial: {
-    fontSize: 28,
+    fontSize: 32,
     fontWeight: '800',
     color: '#FFFFFF',
   },
-  vipBadgeIcon: {
+  cameraIconBadge: {
     position: 'absolute',
-    bottom: -2,
-    right: -2,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
+    bottom: 0,
+    right: 0,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    borderWidth: 1.5,
+    borderColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   userName: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#0F172A',
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFFFFF',
   },
   userEmail: {
     fontSize: 13,
-    color: '#64748B',
-    textAlign: 'center',
+    color: '#A1A1AA',
     marginTop: 2,
-    marginBottom: 10,
-  },
-  textWhite: {
-    color: '#FFFFFF',
-  },
-  textMutedDark: {
-    color: '#94A3B8',
+    marginBottom: 8,
   },
   badgeRow: {
     marginTop: 2,
   },
-  statusBadge: {
+  vipBadge: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 5,
-    borderRadius: 14,
-    shadowColor: '#F59E0B',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 6,
-    elevation: 4,
+    gap: 5,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
   },
-  statusBadgeText: {
-    fontSize: 11,
+  vipBadgeText: {
+    fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
-  freeBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#E2E8F0',
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  freeBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#475569',
-  },
-  expiryBox: {
+  upgradeBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    backgroundColor: 'rgba(99, 102, 241, 0.15)',
     paddingHorizontal: 12,
     paddingVertical: 4,
-    borderRadius: 10,
-    marginTop: 10,
-  },
-  expiryText: {
-    fontSize: 11,
-    color: '#10B981',
-    fontWeight: '700',
-  },
-  perksCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 18,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    marginBottom: 14,
-  },
-  perksHeading: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#334155',
-    marginBottom: 10,
-  },
-  perksGrid: {
-    gap: 10,
-  },
-  perkItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    backgroundColor: '#FFFFFF',
-    padding: 10,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#F1F5F9',
+    borderColor: '#6366F1',
   },
-  perkTextCol: {
-    flex: 1,
-  },
-  perkTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0F172A',
-  },
-  perkDesc: {
-    fontSize: 11,
-    color: '#64748B',
-  },
-  officialGoogleBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 12,
-    backgroundColor: '#FFFFFF',
-    borderWidth: 1.5,
-    borderColor: '#4285F4',
-    borderRadius: 14,
-    paddingVertical: 13,
-    marginBottom: 14,
-    shadowColor: '#4285F4',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 2,
-  },
-  officialGoogleLogo: {
-    width: 24,
-    height: 24,
-    resizeMode: 'contain',
-  },
-  officialGoogleBtnText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#3C4043',
-  },
-  upgradeBtn: {
-    borderRadius: 16,
-    overflow: 'hidden',
-    marginBottom: 12,
-    shadowColor: '#6366F1',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  upgradeGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-  },
-  upgradeBtnText: {
-    fontSize: 15,
+  upgradeBadgeText: {
+    fontSize: 10,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#818CF8',
+    letterSpacing: 0.5,
   },
-  syncNotice: {
+  whiteSheet: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    overflow: 'hidden',
+  },
+  scrollContent: {
+    padding: 16,
+    gap: 12,
+  },
+  groupCard: {
+    backgroundColor: '#F4F4F6',
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 4,
+  },
+  rowItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    backgroundColor: '#EFF6FF',
-    padding: 10,
-    borderRadius: 12,
-    marginBottom: 12,
+    paddingVertical: 13,
+    gap: 14,
   },
-  syncNoticeText: {
-    fontSize: 11,
-    color: '#1E40AF',
-    flex: 1,
-    lineHeight: 15,
-  },
-  signOutBtn: {
-    flexDirection: 'row',
+  iconCircle: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
-    paddingVertical: 10,
-    backgroundColor: '#FEF2F2',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#FEE2E2',
   },
-  signOutText: {
+  rowLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#18181B',
+  },
+  divider: {
+    height: 1,
+    backgroundColor: '#E4E4E7',
+    marginLeft: 50,
+  },
+  expandSettingsBox: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    padding: 12,
+    marginVertical: 4,
+    gap: 10,
+  },
+  switchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  switchText: {
     fontSize: 13,
-    color: '#EF4444',
-    fontWeight: '700',
+    fontWeight: '600',
+    color: '#27272A',
   },
 });
