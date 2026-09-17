@@ -1,4 +1,5 @@
 import React from 'react';
+import { TouchableOpacity } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -41,6 +42,15 @@ function AppTabs() {
         headerShown: false,
         tabBarActiveTintColor: '#3B82F6',
         tabBarInactiveTintColor: '#64748B',
+        tabBarPressColor: 'transparent',
+        tabBarPressOpacity: 0.7,
+        tabBarButton: (props) => (
+          <TouchableOpacity
+            {...props}
+            activeOpacity={0.7}
+            style={[props.style, { overflow: 'hidden' }]}
+          />
+        ),
         tabBarStyle: {
           backgroundColor: '#FFFFFF',
           borderTopColor: '#E2E8F0',
