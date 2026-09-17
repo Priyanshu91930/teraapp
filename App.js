@@ -1,7 +1,7 @@
 import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -31,49 +31,59 @@ const ICONS = {
   Settings: { active: 'settings', inactive: 'settings-outline' },
 };
 
+function AppTabs() {
+  const insets = useSafeAreaInsets();
+  const bottomInset = Math.max(insets.bottom, 10);
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarActiveTintColor: '#3B82F6',
+        tabBarInactiveTintColor: '#64748B',
+        tabBarStyle: {
+          backgroundColor: '#FFFFFF',
+          borderTopColor: '#E2E8F0',
+          height: 54 + bottomInset,
+          paddingBottom: bottomInset,
+          paddingTop: 6,
+          elevation: 10,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -3 },
+          shadowOpacity: 0.08,
+          shadowRadius: 6,
+        },
+        tabBarLabelStyle: {
+          fontSize: 11,
+          fontWeight: '600',
+          marginTop: 2,
+        },
+        tabBarIcon: ({ focused, color }) => {
+          const icons = ICONS[route.name];
+          return (
+            <Ionicons
+              name={focused ? icons.active : icons.inactive}
+              size={22}
+              color={color}
+            />
+          );
+        },
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="Downloads" component={DownloadScreen} />
+      <Tab.Screen name="History" component={HistoryScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+    </Tab.Navigator>
+  );
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={theme}>
         <StatusBar style="dark" />
-        <Tab.Navigator
-          screenOptions={({ route }) => ({
-            headerShown: false,
-            tabBarActiveTintColor: '#3B82F6',
-            tabBarInactiveTintColor: '#64748B',
-            tabBarStyle: {
-              backgroundColor: '#FFFFFF',
-              borderTopColor: '#E2E8F0',
-              height: 60,
-              paddingBottom: 8,
-              paddingTop: 6,
-              elevation: 8,
-              shadowColor: '#000',
-              shadowOffset: { width: 0, height: -2 },
-              shadowOpacity: 0.05,
-              shadowRadius: 4,
-            },
-            tabBarLabelStyle: {
-              fontSize: 11,
-              fontWeight: '600',
-            },
-            tabBarIcon: ({ focused, color, size }) => {
-              const icons = ICONS[route.name];
-              return (
-                <Ionicons
-                  name={focused ? icons.active : icons.inactive}
-                  size={22}
-                  color={color}
-                />
-              );
-            },
-          })}
-        >
-          <Tab.Screen name="Home" component={HomeScreen} />
-          <Tab.Screen name="Downloads" component={DownloadScreen} />
-          <Tab.Screen name="History" component={HistoryScreen} />
-          <Tab.Screen name="Settings" component={SettingsScreen} />
-        </Tab.Navigator>
+        <AppTabs />
       </NavigationContainer>
     </SafeAreaProvider>
   );
