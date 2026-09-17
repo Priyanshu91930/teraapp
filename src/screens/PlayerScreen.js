@@ -30,7 +30,7 @@ function formatTime(secs) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-function InnerPlayer({ url, fallbackUrl, name, headers, onClose }) {
+function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
   const insets = useSafeAreaInsets();
   const { width, height } = useWindowDimensions();
   const isLandscape = width > height;
@@ -134,8 +134,9 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose }) {
     return () => clearTimeout(timer);
   }, [status, activeUrl, fallbackUrl]);
 
-  // Video Complete Rewarded Ad
+  // Video Complete Rewarded Ad (Disabled for Premium users)
   useEffect(() => {
+    if (isPremium) return;
     let completeAd = null;
     let timer = setTimeout(() => {
       try {
@@ -160,12 +161,13 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose }) {
       }
     }, 1200);
     return () => clearTimeout(timer);
-  }, []);
+  }, [isPremium]);
 
   const isClosingRef = useRef(false);
 
-  // Player Close Rewarded Ad
+  // Player Close Rewarded Ad (Disabled for Premium users)
   useEffect(() => {
+    if (isPremium) return;
     let closeAd = null;
     let timer = setTimeout(() => {
       try {
@@ -190,7 +192,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose }) {
       }
     }, 1500);
     return () => clearTimeout(timer);
-  }, [onClose]);
+  }, [onClose, isPremium]);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimerRef.current) {
@@ -587,7 +589,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose }) {
   );
 }
 
-export default function PlayerScreen({ visible, url, fallbackUrl, headers, name, onClose }) {
+export default function PlayerScreen({ visible, url, fallbackUrl, headers, name, onClose, isPremium }) {
   return (
     <Modal
       visible={visible}
@@ -596,7 +598,7 @@ export default function PlayerScreen({ visible, url, fallbackUrl, headers, name,
       supportedOrientations={['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right']}
     >
       {visible && url ? (
-        <InnerPlayer url={url} fallbackUrl={fallbackUrl} name={name} headers={headers} onClose={onClose} />
+        <InnerPlayer url={url} fallbackUrl={fallbackUrl} name={name} headers={headers} onClose={onClose} isPremium={isPremium} />
       ) : (
         <View style={st.root}><StatusBar hidden /><ActivityIndicator size="large" color="#FFF" /></View>
       )}

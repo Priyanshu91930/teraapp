@@ -19,6 +19,7 @@ import { colors, radius, spacing } from '../theme';
 import { clearHistory, getHistory, removeHistoryItem } from '../services/storage';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
+import { getStoredUser, checkIsPremium } from '../services/authService';
 
 function formatDate(iso) {
   try {
@@ -32,12 +33,18 @@ function formatDate(iso) {
 
 export default function HistoryScreen() {
   const [items, setItems] = useState([]);
+  const [user, setUser] = useState(null);
 
   useFocusEffect(
     useCallback(() => {
       getHistory().then(setItems);
+      getStoredUser().then((u) => {
+        if (u) setUser(u);
+      });
     }, [])
   );
+
+  const isPremiumUser = checkIsPremium(user);
 
   async function handleRemove(id) {
     Alert.alert(
@@ -166,12 +173,14 @@ export default function HistoryScreen() {
           />
         )}
       </Screen>
-      <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={AD_UNIT_IDS.BANNER}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-        />
-      </View>
+      {!isPremiumUser && (
+        <View style={styles.bannerContainer}>
+          <BannerAd
+            unitId={AD_UNIT_IDS.BANNER}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          />
+        </View>
+      )}
     </View>
   );
 }

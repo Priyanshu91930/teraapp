@@ -59,3 +59,11 @@ export async function logoutUser() {
     await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
   } catch (e) {}
 }
+
+export function checkIsPremium(user) {
+  if (!user) return false;
+  if (user.isPremium === true) return true;
+  if (user.premiumStatus === 'premium') return true;
+  if (user.plan && user.plan.toLowerCase() !== 'free') return true;
+  return false;
+}

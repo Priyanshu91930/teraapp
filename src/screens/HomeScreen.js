@@ -28,7 +28,7 @@ import { getSettings, getHistory } from '../services/storage';
 import ShareSheet from '../components/ShareSheet';
 import ProfileModal from '../components/ProfileModal';
 import SubscriptionModal from '../components/SubscriptionModal';
-import { getStoredUser, fetchFreshUserStatus } from '../services/authService';
+import { getStoredUser, fetchFreshUserStatus, checkIsPremium } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
 import {
   startDownload,
@@ -63,6 +63,8 @@ export default function HomeScreen({ navigation }) {
   const [showProfileModal, setShowProfileModal] = useState(false);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
+  const isPremiumUser = checkIsPremium(user);
+
   useEffect(() => {
     (async () => {
       const stored = await getStoredUser();
@@ -83,6 +85,7 @@ export default function HomeScreen({ navigation }) {
   const rewardedInterstitialRef = useRef(null);
 
   useEffect(() => {
+    if (isPremiumUser) return;
     rewardedInterstitialRef.current = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED, {
       requestNonPersonalizedAdsOnly: true,
     });
@@ -118,7 +121,7 @@ export default function HomeScreen({ navigation }) {
       unsubscribeEarned();
       unsubscribeClosed();
     };
-  }, []);
+  }, [isPremiumUser]);
   const [downloadSpeed, setDownloadSpeed] = useState('0 KB/s');
   const [timeRemaining, setTimeRemaining] = useState('--');
   const [bytesWritten, setBytesWritten] = useState('0 MB');
@@ -558,21 +561,23 @@ export default function HomeScreen({ navigation }) {
             </View>
           </View>
 
-          {/* Banner Ad 2 - Placed above Supported TeraBox Formats */}
-          <View style={topBannerAdLoaded ? [styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }] : { height: 0, overflow: 'hidden' }}>
-            <BannerAd
-              unitId={AD_UNIT_IDS.BANNER_TOP}
-              size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-              requestOptions={{
-                requestNonPersonalizedAdsOnly: true,
-              }}
-              onAdLoaded={() => setTopBannerAdLoaded(true)}
-              onAdFailedToLoad={(error) => {
-                console.log('Top Banner Ad failed to load:', error.message);
-                setTopBannerAdLoaded(false);
-              }}
-            />
-          </View>
+          {/* Banner Ad 2 - Placed above Supported TeraBox Formats (Disabled for Premium Users) */}
+          {!isPremiumUser && (
+            <View style={topBannerAdLoaded ? [styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }] : { height: 0, overflow: 'hidden' }}>
+              <BannerAd
+                unitId={AD_UNIT_IDS.BANNER_TOP}
+                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+                requestOptions={{
+                  requestNonPersonalizedAdsOnly: true,
+                }}
+                onAdLoaded={() => setTopBannerAdLoaded(true)}
+                onAdFailedToLoad={(error) => {
+                  console.log('Top Banner Ad failed to load:', error.message);
+                  setTopBannerAdLoaded(false);
+                }}
+              />
+            </View>
+          )}
 
           {/* Supported Domains collapsible section */}
           <View style={styles.mirrorsCard}>
@@ -758,6 +763,7 @@ export default function HomeScreen({ navigation }) {
         headers={playerSource?.headers}
         name={playerName}
         onClose={() => setPlayerVisible(false)}
+        isPremium={isPremiumUser}
       />
 
       <ProfileModal
@@ -780,21 +786,23 @@ export default function HomeScreen({ navigation }) {
         }}
       />
 
-      {/* Banner Ad - Only takes space when ad is loaded, zero placeholder space when loading/failed */}
-      <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
-        <BannerAd
-          unitId={AD_UNIT_IDS.BANNER}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-          onAdLoaded={() => setBannerAdLoaded(true)}
-          onAdFailedToLoad={(error) => {
-            console.log('Banner Ad failed to load:', error.message);
-            setBannerAdLoaded(false);
-          }}
-        />
-      </View>
+      {/* Banner Ad - Disabled for Premium Users */}
+      {!isPremiumUser && (
+        <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
+          <BannerAd
+            unitId={AD_UNIT_IDS.BANNER}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            requestOptions={{
+              requestNonPersonalizedAdsOnly: true,
+            }}
+            onAdLoaded={() => setBannerAdLoaded(true)}
+            onAdFailedToLoad={(error) => {
+              console.log('Banner Ad failed to load:', error.message);
+              setBannerAdLoaded(false);
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }

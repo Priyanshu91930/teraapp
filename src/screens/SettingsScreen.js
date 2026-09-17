@@ -7,6 +7,7 @@ import { colors, radius, spacing } from '../theme';
 import { getSettings, saveSettings, DEFAULT_SETTINGS } from '../services/storage';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
+import { getStoredUser, checkIsPremium } from '../services/authService';
 
 function Section({ label, children }) {
   return (
@@ -30,10 +31,16 @@ function SettingRow({ icon, label, description, children }) {
 export default function SettingsScreen() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
     getSettings().then(setSettings);
+    getStoredUser().then((u) => {
+      if (u) setUser(u);
+    });
   }, []);
+
+  const isPremiumUser = checkIsPremium(user);
 
   function update(key, value) {
     setSettings((prev) => ({ ...prev, [key]: value }));
@@ -128,12 +135,14 @@ export default function SettingsScreen() {
           TeraBox Downloader — Free & unlimited. Use responsibly.
         </Text>
       </ScrollView>
-      <View style={styles.bannerContainer}>
-        <BannerAd
-          unitId={AD_UNIT_IDS.BANNER}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-        />
-      </View>
+      {!isPremiumUser && (
+        <View style={styles.bannerContainer}>
+          <BannerAd
+            unitId={AD_UNIT_IDS.BANNER}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+          />
+        </View>
+      )}
     </Screen>
   );
 }

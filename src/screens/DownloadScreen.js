@@ -19,6 +19,7 @@ import { AD_UNIT_IDS } from '../services/adConfig';
 import Screen from '../components/Screen';
 import { colors, radius, spacing } from '../theme';
 import { getHistory, removeHistoryItem } from '../services/storage';
+import { getStoredUser, checkIsPremium } from '../services/authService';
 import {
   addDownloadListener,
   removeDownloadListener,
@@ -31,6 +32,16 @@ export default function DownloadScreen() {
   const [downloads, setDownloads] = useState([]);
   const [activeUpdates, setActiveUpdates] = useState({});
   const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
+  const [user, setUser] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      const stored = await getStoredUser();
+      if (stored) setUser(stored);
+    })();
+  }, []);
+
+  const isPremiumUser = checkIsPremium(user);
 
   useFocusEffect(
     useCallback(() => {
@@ -333,21 +344,23 @@ export default function DownloadScreen() {
         )}
       </Screen>
 
-      {/* Banner Ad - Only takes space when ad is loaded, zero placeholder space when loading/failed */}
-      <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
-        <BannerAd
-          unitId={AD_UNIT_IDS.BANNER}
-          size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-          requestOptions={{
-            requestNonPersonalizedAdsOnly: true,
-          }}
-          onAdLoaded={() => setBannerAdLoaded(true)}
-          onAdFailedToLoad={(error) => {
-            console.log('Banner Ad failed to load:', error.message);
-            setBannerAdLoaded(false);
-          }}
-        />
-      </View>
+      {/* Banner Ad - Disabled for Premium Users */}
+      {!isPremiumUser && (
+        <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
+          <BannerAd
+            unitId={AD_UNIT_IDS.BANNER}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            requestOptions={{
+              requestNonPersonalizedAdsOnly: true,
+            }}
+            onAdLoaded={() => setBannerAdLoaded(true)}
+            onAdFailedToLoad={(error) => {
+              console.log('Banner Ad failed to load:', error.message);
+              setBannerAdLoaded(false);
+            }}
+          />
+        </View>
+      )}
     </View>
   );
 }
