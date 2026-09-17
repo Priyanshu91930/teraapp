@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Image,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -29,7 +30,6 @@ export default function SettingsScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-  const [showAppSettings, setShowAppSettings] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
 
   useEffect(() => {
@@ -131,7 +131,7 @@ export default function SettingsScreen({ navigation }) {
                 <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
               ) : (
                 <Text style={styles.avatarInitial}>
-                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'M'}
+                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'P'}
                 </Text>
               )}
             </View>
@@ -145,17 +145,17 @@ export default function SettingsScreen({ navigation }) {
           </View>
 
           <Text style={styles.userName}>
-            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Marie T Wiedman'}
+            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'priya'}
           </Text>
           <Text style={styles.userEmail}>
-            {isLoggedIn ? user.email : 'Marie@gmail.com'}
+            {isLoggedIn ? user.email : 'priay9193@gmail.com'}
           </Text>
 
           <View style={styles.badgeRow}>
             {isPremiumUser ? (
               <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.vipBadge}>
                 <Ionicons name="star" size={11} color="#FFFFFF" />
-                <Text style={styles.vipBadgeText}>VIP PREMIUM MEMBER</Text>
+                <Text style={styles.vipBadgeText}>★ VIP PREMIUM MEMBER</Text>
               </LinearGradient>
             ) : (
               <TouchableOpacity
@@ -181,22 +181,53 @@ export default function SettingsScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
 
-          {/* Group 1: Wallet */}
+          {/* Group 1: Buy Premium & Manage Premium */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
               activeOpacity={0.7}
               onPress={() => setShowSubscriptionModal(true)}
             >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="wallet-outline" size={18} color="#27272A" />
+              <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="sparkles" size={18} color="#D97706" />
               </View>
-              <Text style={styles.rowLabel}>Wallet</Text>
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowLabel}>Buy Premium</Text>
+                <Text style={styles.rowSubtitle}>100% Ad-Free, 10x Speed & Unlimited Downloads</Text>
+              </View>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => {
+                if (isPremiumUser) {
+                  Alert.alert(
+                    '★ Premium Membership Active',
+                    `Plan: ${user?.plan ? user.plan.toUpperCase() : 'Yearly VIP'}\nStatus: Active & Valid until 2027\n\nFeatures Enabled:\n• 100% Ad-Free Experience\n• 10x Ultra Speed Downloads\n• 1080p HD Streaming`
+                  );
+                } else {
+                  setShowSubscriptionModal(true);
+                }
+              }}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#EEF2FF' }]}>
+                <Ionicons name="shield-checkmark" size={18} color="#6366F1" />
+              </View>
+              <View style={styles.rowTextCol}>
+                <Text style={styles.rowLabel}>Manage Premium</Text>
+                <Text style={styles.rowSubtitle}>
+                  {isPremiumUser ? 'View active plan details & benefits' : 'No active plan — Tap to view plans'}
+                </Text>
+              </View>
               <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
             </TouchableOpacity>
           </View>
 
-          {/* Group 2: Edit Profile, Blocked Users, Task Center, Activities */}
+          {/* Group 2: Account & Downloads */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
@@ -215,124 +246,6 @@ export default function SettingsScreen({ navigation }) {
             <TouchableOpacity
               style={styles.rowItem}
               activeOpacity={0.7}
-              onPress={() => Alert.alert('Blocked Users', 'You have no blocked users.')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="person-remove-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>View Blocked Users</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => Alert.alert('Task Center', 'Daily Check-in Complete! 100 Bonus Download Credits Available.')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="clipboard-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Task Center</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => Alert.alert('Activities', 'Your TeraBox downloader is active & running at peak speed.')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="grid-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Activities</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Group 3: Settings, Level, Favorites, Downloads */}
-          <View style={styles.groupCard}>
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => setShowAppSettings(!showAppSettings)}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="settings-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Settings</Text>
-              <Ionicons name={showAppSettings ? "chevron-down" : "chevron-forward"} size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            {/* Expandable app toggles */}
-            {showAppSettings && (
-              <View style={styles.expandSettingsBox}>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchText}>Save Downloads to Gallery</Text>
-                  <Switch
-                    value={settings.saveToGallery}
-                    onValueChange={(v) => updateSetting('saveToGallery', v)}
-                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchText}>Auto-Resume Downloads</Text>
-                  <Switch
-                    value={settings.autoResume}
-                    onValueChange={(v) => updateSetting('autoResume', v)}
-                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-                <View style={styles.switchRow}>
-                  <Text style={styles.switchText}>Proxy Server Mode</Text>
-                  <Switch
-                    value={settings.useProxy}
-                    onValueChange={(v) => updateSetting('useProxy', v)}
-                    trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
-                    thumbColor="#FFFFFF"
-                  />
-                </View>
-              </View>
-            )}
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => Alert.alert('Level', isPremiumUser ? 'Level 10 VIP Member' : 'Level 1 Standard User')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="ribbon-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Level</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => navigation?.navigate('History')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="heart-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Favorites</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
               onPress={() => navigation?.navigate('Downloads')}
             >
               <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
@@ -343,7 +256,82 @@ export default function SettingsScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* Group 4: Logout */}
+          {/* Group 3: App Toggles & Preferences */}
+          <View style={styles.groupCard}>
+            <View style={styles.switchRowItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="speedometer-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>10x Speed Acceleration</Text>
+              <Switch
+                value={settings.autoResume}
+                onValueChange={(v) => updateSetting('autoResume', v)}
+                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.switchRowItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="images-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Save Downloads to Gallery</Text>
+              <Switch
+                value={settings.saveToGallery}
+                onValueChange={(v) => updateSetting('saveToGallery', v)}
+                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            <View style={styles.switchRowItem}>
+              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
+                <Ionicons name="swap-horizontal-outline" size={18} color="#27272A" />
+              </View>
+              <Text style={styles.rowLabel}>Proxy Server Mode</Text>
+              <Switch
+                value={settings.useProxy}
+                onValueChange={(v) => updateSetting('useProxy', v)}
+                trackColor={{ true: '#6366F1', false: '#E4E4E7' }}
+                thumbColor="#FFFFFF"
+              />
+            </View>
+          </View>
+
+          {/* Group 4: Support & Legal */}
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Linking.openURL('https://t.me/teraboxbot').catch(() => {})}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
+                <Ionicons name="paper-plane-outline" size={18} color="#0284C7" />
+              </View>
+              <Text style={styles.rowLabel}>Telegram Bot & Support</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={() => Linking.openURL('https://teraboxdownloader.co.in/privacy-policy').catch(() => {})}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
+                <Ionicons name="shield-checkmark-outline" size={18} color="#64748B" />
+              </View>
+              <Text style={styles.rowLabel}>Privacy Policy & Terms</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Group 5: Logout */}
           <View style={styles.groupCard}>
             <TouchableOpacity
               style={styles.rowItem}
@@ -532,6 +520,12 @@ const styles = StyleSheet.create({
     paddingVertical: 13,
     gap: 14,
   },
+  switchRowItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    gap: 14,
+  },
   iconCircle: {
     width: 36,
     height: 36,
@@ -539,33 +533,24 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  rowTextCol: {
+    flex: 1,
+  },
   rowLabel: {
     flex: 1,
     fontSize: 15,
     fontWeight: '600',
     color: '#18181B',
   },
+  rowSubtitle: {
+    fontSize: 11,
+    color: '#71717A',
+    marginTop: 1,
+  },
   divider: {
     height: 1,
     backgroundColor: '#E4E4E7',
     marginLeft: 50,
-  },
-  expandSettingsBox: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 12,
-    padding: 12,
-    marginVertical: 4,
-    gap: 10,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  switchText: {
-    fontSize: 13,
-    fontWeight: '600',
-    color: '#27272A',
   },
   bannerContainer: {
     alignItems: 'center',
