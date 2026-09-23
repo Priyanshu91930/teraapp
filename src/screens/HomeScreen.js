@@ -28,6 +28,7 @@ import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../service
 import { getSettings, getHistory, addHistoryItem } from '../services/storage';
 import ShareSheet from '../components/ShareSheet';
 import SubscriptionModal from '../components/SubscriptionModal';
+import { checkAndPromptInAppReview } from '../services/storeReview';
 import { getStoredUser, fetchFreshUserStatus, checkIsPremium } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
 import {
@@ -91,9 +92,7 @@ export default function HomeScreen({ navigation }) {
       setAdLoaded(false);
       return;
     }
-    rewardedInterstitialRef.current = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED, {
-      requestNonPersonalizedAdsOnly: true,
-    });
+    rewardedInterstitialRef.current = RewardedAd.createForAdRequest(AD_UNIT_IDS.REWARDED, {});
 
     const unsubscribeLoaded = rewardedInterstitialRef.current.addAdEventListener(
       RewardedAdEventType.LOADED,
@@ -152,6 +151,7 @@ export default function HomeScreen({ navigation }) {
           setDownloading(false);
           setActiveDownloadId(null);
           Alert.alert('Download Complete', 'File downloaded successfully.');
+          checkAndPromptInAppReview();
         } else if (update.status === 'failed') {
           setError(update.error || 'Download failed.');
           setDownloading(false);
@@ -188,7 +188,7 @@ export default function HomeScreen({ navigation }) {
   function validate() {
     const url = extractTeraboxUrl(input);
     if (!url) {
-      setError('Invalid share link. Please paste a valid TeraBox, YouTube, Instagram, Facebook, or TikTok link.');
+      setError('Invalid share link. Please paste a valid TeraBox link.');
       return null;
     }
     setError('');
@@ -200,25 +200,82 @@ export default function HomeScreen({ navigation }) {
     if (!url) return;
 
     // Show rewarded ad first ONLY for free users if available, then resolve
-    if (!isPremiumUser && adLoaded && rewardedInterstitialRef.current) {
-      try {
-        console.log('Showing Rewarded Ad before resolve...');
-        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
-          AdEventType.CLOSED,
-          () => {
-            unsubClose();
-            setAdLoaded(false);
-            rewardedInterstitialRef.current?.load(); // preload next
-            doResolve(url);
+    if (!isPremiumUser && rewardedInterstitialRef.current) {
+      if (adLoaded) {
+        // Condition 1: Ad is ALREADY loaded -> Show immediately with 0 delay
+        try {
+          console.log('Showing Rewarded Ad immediately before resolve...');
+          const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+            AdEventType.CLOSED,
+            () => {
+              unsubClose();
+              setAdLoaded(false);
+              rewardedInterstitialRef.current?.load(); // preload next
+              doResolve(url);
+            }
+          );
+          rewardedInterstitialRef.current.show();
+          return; // wait for ad to close
+        } catch (err) {
+          console.log('Failed to show rewarded ad:', err);
+        }
+      } else {
+        // Condition 2: Ad is NOT loaded yet -> Show spinner & wait up to 2.5s for ad load
+        console.log('Ad not loaded yet, waiting up to 2.5s for ad load...');
+        setParsing(true);
+
+        const isAdShowAttempted = { current: false };
+
+        const waitForAdPromise = new Promise((resolve) => {
+          let timeoutId = null;
+          let unsubLoaded = null;
+
+          const finish = (wasLoaded) => {
+            if (isAdShowAttempted.current) return;
+            isAdShowAttempted.current = true;
+            if (timeoutId) clearTimeout(timeoutId);
+            if (unsubLoaded) unsubLoaded();
+            resolve(wasLoaded);
+          };
+
+          unsubLoaded = rewardedInterstitialRef.current.addAdEventListener(
+            RewardedAdEventType.LOADED,
+            () => {
+              console.log('Rewarded Ad loaded during 2.5s wait window!');
+              setAdLoaded(true);
+              finish(true);
+            }
+          );
+
+          timeoutId = setTimeout(() => {
+            console.log('1.2s wait window expired for Rewarded Ad. Proceeding with resolve...');
+            finish(false);
+          }, 1200);
+        });
+
+        const adLoadedInTime = await waitForAdPromise;
+
+        if (adLoadedInTime && rewardedInterstitialRef.current) {
+          try {
+            console.log('Showing Rewarded Ad after 2.5s wait window...');
+            const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+              AdEventType.CLOSED,
+              () => {
+                unsubClose();
+                setAdLoaded(false);
+                rewardedInterstitialRef.current?.load(); // preload next
+                doResolve(url);
+              }
+            );
+            rewardedInterstitialRef.current.show();
+            return; // wait for ad to close
+          } catch (err) {
+            console.log('Failed to show rewarded ad after wait:', err);
           }
-        );
-        rewardedInterstitialRef.current.show();
-        return; // wait for ad to close
-      } catch (err) {
-        console.log('Failed to show rewarded ad:', err);
+        }
       }
     }
-    // No ad — resolve directly
+    // Direct resolve if premium or ad failed to load within 2.5s
     await doResolve(url);
   }
 
@@ -420,10 +477,9 @@ export default function HomeScreen({ navigation }) {
 
       console.log('[Watch Success] Selected playUrl:', playUrl);
 
-      // Do NOT pass downloadHeaders when playing through the proxy (download.php).
-      // The proxy already handles authentication internally.
-      const isProxyUrl = playUrl.includes('download.php');
-      const headers = isProxyUrl ? {} : (result.downloadHeaders || {});
+      // Do NOT pass downloadHeaders when playing through proxy (download.php) or direct TeraBox CDN (d8.freeterabox.com).
+      const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
+      const headers = isProxyOrCdnUrl ? {} : (result.downloadHeaders || {});
       let secondaryFallbackUrl = '';
       if (playUrl !== result.dlink && result.dlink && result.dlink.startsWith('http')) {
         secondaryFallbackUrl = result.dlink;
@@ -507,9 +563,21 @@ export default function HomeScreen({ navigation }) {
           )}
         </TouchableOpacity>
         <Text style={styles.topBarTitle}>Terabox Downloader</Text>
-        <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
-          <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
-        </TouchableOpacity>
+        <View style={styles.headerRightActions}>
+          {!isPremiumUser && (
+            <TouchableOpacity
+              activeOpacity={0.8}
+              style={styles.headerVipBtn}
+              onPress={() => setShowSubscriptionModal(true)}
+            >
+              <Ionicons name="sparkles" size={13} color="#F59E0B" />
+              <Text style={styles.headerVipText}>VIP</Text>
+            </TouchableOpacity>
+          )}
+          <TouchableOpacity activeOpacity={0.7} style={styles.headerIconBtn} onPress={() => setShowShareSheet(true)}>
+            <Ionicons name="share-social-outline" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <KeyboardAvoidingView
@@ -583,17 +651,13 @@ export default function HomeScreen({ navigation }) {
 
           {/* Banner Ad 2 - Placed above Supported TeraBox Formats (Disabled for Premium Users) */}
           {!isPremiumUser && (
-            <View style={topBannerAdLoaded ? [styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }] : { height: 0, overflow: 'hidden' }}>
+            <View style={[styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }]}>
               <BannerAd
                 unitId={AD_UNIT_IDS.BANNER_TOP}
                 size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                requestOptions={{
-                  requestNonPersonalizedAdsOnly: true,
-                }}
                 onAdLoaded={() => setTopBannerAdLoaded(true)}
                 onAdFailedToLoad={(error) => {
                   console.log('Top Banner Ad failed to load:', error.message);
-                  setTopBannerAdLoaded(false);
                 }}
               />
             </View>
@@ -802,17 +866,13 @@ export default function HomeScreen({ navigation }) {
 
       {/* Banner Ad - Disabled for Premium Users */}
       {!isPremiumUser && (
-        <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
+        <View style={styles.bannerAdContainer}>
           <BannerAd
             unitId={AD_UNIT_IDS.BANNER}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            requestOptions={{
-              requestNonPersonalizedAdsOnly: true,
-            }}
             onAdLoaded={() => setBannerAdLoaded(true)}
             onAdFailedToLoad={(error) => {
               console.log('Banner Ad failed to load:', error.message);
-              setBannerAdLoaded(false);
             }}
           />
         </View>
@@ -840,6 +900,31 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 4,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  headerVipBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 12,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+  },
+  headerVipText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#D97706',
+    letterSpacing: 0.5,
   },
   headerIconBtn: {
     padding: 4,

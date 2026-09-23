@@ -345,17 +345,13 @@ export default function DownloadScreen() {
 
       {/* Banner Ad - Disabled for Premium Users */}
       {!isPremiumUser && (
-        <View style={bannerAdLoaded ? styles.bannerAdContainer : { height: 0, overflow: 'hidden' }}>
+        <View style={styles.bannerAdContainer}>
           <BannerAd
             unitId={AD_UNIT_IDS.BANNER}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            requestOptions={{
-              requestNonPersonalizedAdsOnly: true,
-            }}
             onAdLoaded={() => setBannerAdLoaded(true)}
             onAdFailedToLoad={(error) => {
               console.log('Banner Ad failed to load:', error.message);
-              setBannerAdLoaded(false);
             }}
           />
         </View>

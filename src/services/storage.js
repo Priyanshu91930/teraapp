@@ -3,7 +3,7 @@ import { getStoredUser } from './authService';
 
 const HISTORY_KEY = '@teraapp/history';
 const SETTINGS_KEY = '@teraapp/settings';
-const API_BASE_URL = 'https://api.teraboxdownloader.co.in';
+const API_BASE_URL = 'https://teraapi-six.vercel.app';
 
 export const DEFAULT_SETTINGS = {
   apiBaseUrl: 'https://teraapi-six.vercel.app',
@@ -45,10 +45,15 @@ export async function getHistory(userEmail) {
   // If user is logged in, fetch cloud history from MongoDB
   try {
     const res = await fetch(`${API_BASE_URL}/api/history?email=${encodeURIComponent(email)}`);
-    const data = await res.json();
-    if (data && data.success && Array.isArray(data.history)) {
-      await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(data.history.slice(0, 100)));
-      return data.history;
+    if (res.ok) {
+      const rawText = await res.text();
+      try {
+        const data = JSON.parse(rawText);
+        if (data && data.success && Array.isArray(data.history)) {
+          await AsyncStorage.setItem(HISTORY_KEY, JSON.stringify(data.history.slice(0, 100)));
+          return data.history;
+        }
+      } catch (jsonErr) {}
     }
   } catch (e) {
     console.log('MongoDB history fetch error, fallback to local:', e.message);

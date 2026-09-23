@@ -39,17 +39,18 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
       const userObj = userInfo.user || userInfo;
 
       if (userObj && userObj.email) {
-        const updatedUser = await syncGoogleUser(
+        const syncRes = await syncGoogleUser(
           userObj.email,
           userObj.name || userObj.givenName || userObj.email.split('@')[0],
           userObj.photo || '',
           userObj.id || ''
         );
-        if (updatedUser) {
-          if (onUserUpdated) onUserUpdated(updatedUser);
-          Alert.alert('✅ Account Synced', `Signed in as ${updatedUser.email}`);
+        if (syncRes && syncRes.success && syncRes.user) {
+          if (onUserUpdated) onUserUpdated(syncRes.user);
+          Alert.alert('✅ Account Synced', `Signed in as ${syncRes.user.email}`);
         } else {
-          Alert.alert('Login Error', 'Failed to sync Google user with server.');
+          const errMsg = syncRes?.error || 'Failed to sync Google user with server.';
+          Alert.alert('Login Error', errMsg);
         }
       }
     } catch (error) {
@@ -258,7 +259,7 @@ export default function ProfileModal({ visible, onClose, user, onUserUpdated, on
                 activeOpacity={0.7}
                 onPress={() => {
                   onClose();
-                  Linking.openURL('https://t.me/teraboxbot').catch(() => {});
+                  Linking.openURL('https://t.me/+L7tcuoCsTaMxZWVl').catch(() => {});
                 }}
               >
                 <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>

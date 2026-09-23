@@ -1,10 +1,14 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { TouchableOpacity } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
+import { AppOpenAd, AdEventType } from 'react-native-google-mobile-ads';
+import { AD_UNIT_IDS } from './src/services/adConfig';
+import { getStoredUser, checkIsPremium } from './src/services/authService';
+import { setupNotificationChannel, requestNotificationPermission, setupFirebaseRemoteNotifications } from './src/services/notificationManager';
 
 import HomeScreen from './src/screens/HomeScreen';
 import DownloadScreen from './src/screens/DownloadScreen';
@@ -89,6 +93,58 @@ function AppTabs() {
 }
 
 export default function App() {
+  useEffect(() => {
+    let appOpenAd = null;
+    let unsubLoaded = null;
+    let unsubError = null;
+
+    const loadAppOpenAd = async () => {
+      try {
+        const user = await getStoredUser();
+        const isPremium = checkIsPremium(user);
+        if (isPremium) {
+          console.log('[AdMob] VIP User - Skipping App Open Ad');
+          return;
+        }
+
+        appOpenAd = AppOpenAd.createForAdRequest(AD_UNIT_IDS.APP_OPEN, {});
+
+        unsubLoaded = appOpenAd.addAdEventListener(AdEventType.LOADED, () => {
+          console.log('[AdMob] App Open Ad loaded successfully. Showing now...');
+          appOpenAd.show().catch((err) => {
+            console.log('[AdMob] App Open Ad show error:', err.message);
+          });
+        });
+
+        unsubError = appOpenAd.addAdEventListener(AdEventType.ERROR, (error) => {
+          console.log('[AdMob] App Open Ad failed to load:', error.message);
+        });
+
+        appOpenAd.load();
+      } catch (err) {
+        console.log('[AdMob] App Open Ad init exception:', err.message);
+      }
+    };
+
+    const initNotifications = async () => {
+      try {
+        await setupNotificationChannel();
+        await requestNotificationPermission();
+        await setupFirebaseRemoteNotifications();
+      } catch (err) {
+        console.log('[Notifications] Setup error:', err.message);
+      }
+    };
+
+    initNotifications();
+    loadAppOpenAd();
+
+    return () => {
+      if (unsubLoaded) unsubLoaded();
+      if (unsubError) unsubError();
+    };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={theme}>

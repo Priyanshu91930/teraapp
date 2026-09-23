@@ -74,6 +74,18 @@ export class SegmentedDownloader {
     this.partUris = Array.from({ length: connections }, (_, i) => `${fileUri}.part${i}`);
     this.lastEmit = 0;
     this.lastEmittedBytes = 0;
+
+    // Calculate already downloaded bytes from existing part files when resuming
+    let existingBytes = 0;
+    for (const partUri of this.partUris) {
+      try {
+        const partFile = new File(partUri);
+        if (partFile.exists) {
+          existingBytes += partFile.size;
+        }
+      } catch (e) {}
+    }
+    this.downloaded = existingBytes;
   }
 
   pause() {

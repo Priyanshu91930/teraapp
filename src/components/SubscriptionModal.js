@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -8,21 +8,35 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import * as RNIap from 'react-native-iap';
 
-import RazorpayCheckout from 'react-native-razorpay';
+const API_BASE_URL = 'https://teraapi-six.vercel.app';
 
-const API_BASE_URL = 'https://api.teraboxdownloader.co.in';
+function withTimeout(promise, timeoutMs = 1200) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) =>
+      setTimeout(() => {
+        console.log(`[IAP Debug] Timed out after ${timeoutMs}ms`);
+        resolve([]);
+      }, timeoutMs)
+    ),
+  ]);
+}
 
 export default function SubscriptionModal({ visible, onClose, user, onPaymentSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('monthly'); // 'weekly', 'monthly', 'yearly'
   const [loading, setLoading] = useState(false);
+  const [subscriptionsList, setSubscriptionsList] = useState([]);
 
   const plans = [
     {
       id: 'weekly',
+      sku: 'weekly_pass',
       name: 'Weekly Pass',
       price: '₹49',
       duration: '7 Days Access',
@@ -31,6 +45,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     },
     {
       id: 'monthly',
+      sku: 'monthly_pro',
       name: 'Monthly Pro',
       price: '₹99',
       duration: '30 Days Access',
@@ -39,6 +54,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     },
     {
       id: 'yearly',
+      sku: 'yearly_vip',
       name: 'Yearly VIP',
       price: '₹499',
       duration: '365 Days Access',
@@ -47,84 +63,162 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     },
   ];
 
+  useEffect(() => {
+    let purchaseUpdateSubscription;
+    let purchaseErrorSubscription;
+
+    const initIAP = async () => {
+      try {
+        console.log('[IAP Debug] Initializing Google Play Billing Connection...');
+        const connected = await withTimeout(RNIap.initConnection(), 1200).catch((e) => {
+          console.log('[IAP Debug] initConnection error:', e.message);
+          return false;
+        });
+
+        if (connected) {
+          const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
+          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 1200).catch((err) => {
+            console.log('[IAP Debug] getSubscriptions catch:', err.message);
+            return [];
+          });
+
+          console.log('[IAP Debug] Initial getSubscriptions count:', fetchedSubs?.length || 0);
+          if (fetchedSubs && fetchedSubs.length > 0) {
+            setSubscriptionsList(fetchedSubs);
+          }
+        }
+
+        if (Platform.OS === 'android') {
+          await RNIap.flushFailedPurchasesCachedAsPendingAndroid().catch(() => {});
+        }
+
+        purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+          console.log('[IAP Debug] purchaseUpdatedListener triggered for productId:', purchase.productId);
+          const receipt = purchase.transactionReceipt || purchase.purchaseToken;
+          if (receipt) {
+            await verifyAndActivatePurchase(receipt, purchase.productId);
+            await RNIap.finishTransaction({ purchase, isConsumable: false }).catch(() => {});
+          }
+        });
+
+        purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
+          setLoading(false);
+          if (error.code !== 'E_USER_CANCELLED') {
+            console.warn('[IAP Debug] Purchase Error Event:', error);
+          }
+        });
+      } catch (err) {
+        console.log('[IAP Debug] initIAP Exception:', err.message);
+      }
+    };
+
+    if (visible) {
+      initIAP();
+    }
+
+    return () => {
+      if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
+      if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
+      RNIap.endConnection().catch(() => {});
+    };
+  }, [visible]);
+
+  async function verifyAndActivatePurchase(purchaseToken, productId) {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE_URL}/api/payment/verify-play-purchase`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: user?.email,
+          purchaseToken: purchaseToken || `test_token_${Date.now()}`,
+          productId: productId || selectedPlan,
+          plan: selectedPlan,
+        }),
+      });
+      const data = await res.json();
+      setLoading(false);
+
+      if (data && data.success) {
+        Alert.alert(
+          '🎉 VIP Premium Activated!',
+          `Thank you for upgrading! Your ${selectedPlan.toUpperCase()} plan is now active on Mobile App, Web & Telegram Bot.`
+        );
+        if (onPaymentSuccess) onPaymentSuccess(user?.email);
+        if (onClose) onClose();
+      } else {
+        Alert.alert('Activation Error', data?.error || 'Failed to activate plan on server.');
+      }
+    } catch (e) {
+      setLoading(false);
+      Alert.alert('Activation Error', 'Network error during plan activation.');
+    }
+  }
+
   async function handleBuyNow() {
     if (!user || !user.email) {
       Alert.alert(
-        '🔐 Login Required',
-        'Please sign in with your Google Email first to purchase and link your premium plan.',
+        '🔐 Sign In Required',
+        'Please sign in with your Google Account first so your VIP plan can be linked to your email across App, Web & Telegram.',
         [{ text: 'OK' }]
       );
       return;
     }
 
+    const currentPlan = plans.find((p) => p.id === selectedPlan);
+    const sku = currentPlan?.sku || 'monthly_pro';
+    console.log('[IAP Debug] Pay Button Pressed -> Selected Plan:', selectedPlan, 'Target SKU:', sku);
+
     setLoading(true);
+
     try {
-      // 1. Create Razorpay order on backend
-      const orderRes = await fetch(`${API_BASE_URL}/api/payment/create-order`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: user.email, plan: selectedPlan }),
-      });
+      console.log('[IAP Step 1] Connecting to Play Billing with timeout...');
+      await withTimeout(RNIap.initConnection(), 1200).catch(() => {});
 
-      const responseText = await orderRes.text();
-      let orderData;
-      try {
-        orderData = JSON.parse(responseText);
-      } catch (e) {
-        throw new Error('Server returned invalid response. Please try again shortly.');
-      }
+      if (Platform.OS === 'android') {
+        const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
+        console.log('[IAP Step 2] Fetching Play Store Subscriptions with 1.2s timeout...');
 
-      if (!orderRes.ok || !orderData.success || !orderData.orderId) {
-        throw new Error(orderData.error || 'Failed to initialize payment gateway.');
-      }
-
-      // 2. Open Native Razorpay Checkout SDK Modal directly in app
-      const options = {
-        description: `${selectedPlan.toUpperCase()} Premium Access`,
-        image: 'https://teraboxdownloader.co.in/logo.png',
-        currency: orderData.currency || 'INR',
-        key: orderData.keyId || 'rzp_live_TbxmcnjfjnDmgx',
-        amount: orderData.amount,
-        name: 'Terabox Downloader',
-        order_id: orderData.orderId,
-        prefill: {
-          email: user.email,
-          contact: '',
-          name: user.name || (user.email ? user.email.split('@')[0] : 'User'),
-        },
-        theme: { color: '#6366F1' },
-      };
-
-      setLoading(false);
-
-      RazorpayCheckout.open(options)
-        .then((data) => {
-          console.log('[Razorpay Success]:', data);
-          Alert.alert(
-            '🎉 Premium Unlocked!',
-            'Thank you for your purchase! Your premium subscription is now active.',
-            [{ text: 'OK' }]
-          );
-          if (onPaymentSuccess) onPaymentSuccess(user.email);
-          if (onClose) onClose();
-        })
-        .catch((error) => {
-          console.log('[Razorpay Error]:', error);
-          if (error && error.code !== 0) {
-            Alert.alert(
-              'Payment Failed',
-              error.description || 'Transaction could not be completed.'
-            );
-          }
+        let fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 1200).catch((e) => {
+          console.log('[IAP Step 2 getSubscriptions Error]:', e.message);
+          return [];
         });
+
+        console.log('[IAP Step 3] getSubscriptions count:', fetchedSubs ? fetchedSubs.length : 0);
+
+        const allSubs = [...(fetchedSubs || []), ...subscriptionsList];
+        const subItem = allSubs.find((s) => s.productId === sku || s.sku === sku);
+        const offerToken = subItem?.subscriptionOfferDetails?.[0]?.offerToken || subItem?.subscriptionOfferDetailsAndroid?.[0]?.offerToken;
+
+        console.log('[IAP Step 4] Found subItem:', !!subItem, 'offerToken:', offerToken || 'NONE');
+
+        if (offerToken) {
+          console.log('[IAP Step 5] Launching Google Play Billing Sheet for SKU:', sku);
+          await RNIap.requestSubscription({
+            sku: sku,
+            subscriptionOffers: [{ sku: sku, offerToken: offerToken }],
+          });
+        } else {
+          Alert.alert(
+            'Google Play Store',
+            `Play Store Billing is active! To test real Google Play payments on device:\n\n• Build must be downloaded from Play Store (Internal/Production track).\n• Play Console SKUs (weekly_pass, monthly_pro, yearly_vip) are active.`
+          );
+        }
+      } else {
+        await RNIap.requestPurchase({ skus: [sku] });
+      }
     } catch (err) {
+      console.log('[IAP Step Exception]', err.message || err);
+      if (err.code !== 'E_USER_CANCELLED') {
+        Alert.alert('Google Play Billing', err.message || 'Payment cancelled or unavailable.');
+      }
+    } finally {
       setLoading(false);
-      Alert.alert('Payment Error', err.message || 'Something went wrong while starting checkout.');
     }
   }
 
   return (
-    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
@@ -142,7 +236,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             {/* Features */}
             <View style={styles.featuresCard}>
               <Text style={styles.featuresHeading}>✨ What You Get with Premium:</Text>
-              
+
               <View style={styles.featureItem}>
                 <Ionicons name="folder-open" size={18} color="#6366F1" />
                 <Text style={styles.featureText}>TeraBox Folder Download Support</Text>
@@ -178,6 +272,9 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             <Text style={styles.selectPlanLabel}>Select Plan:</Text>
             {plans.map((item) => {
               const isSelected = selectedPlan === item.id;
+              const subItem = subscriptionsList.find((s) => s.productId === item.sku || s.sku === item.sku);
+              const playStorePrice = subItem?.subscriptionOfferDetails?.[0]?.pricingPhases?.pricingPhaseList?.[0]?.formattedPrice || subItem?.localizedPrice;
+              const displayPrice = playStorePrice || item.price;
               return (
                 <TouchableOpacity
                   key={item.id}
@@ -201,7 +298,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                       <Text style={styles.planDesc}>{item.desc}</Text>
                     </View>
                     <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.planPrice}>{item.price}</Text>
+                      <Text style={styles.planPrice}>{displayPrice}</Text>
                       <Text style={styles.planDuration}>{item.duration}</Text>
                     </View>
                   </View>
@@ -223,7 +320,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                 style={styles.payGradient}
               >
                 {loading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color="#FFFFFF" size="small" />
                 ) : (
                   <View style={styles.payBtnContent}>
                     <Ionicons name="shield-checkmark" size={20} color="#FFFFFF" />

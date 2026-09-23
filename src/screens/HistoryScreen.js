@@ -123,7 +123,9 @@ export default function HistoryScreen({ navigation }) {
         const playUrl = resObj.stream_url || resObj.dlink || resObj.downloadUrl || data.downloadUrl || '';
 
         if (playUrl) {
-          setPlayerSource({ url: playUrl, headers: resObj.downloadHeaders || {} });
+          const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
+          const headers = isProxyOrCdnUrl ? {} : (resObj.downloadHeaders || data.downloadHeaders || {});
+          setPlayerSource({ url: playUrl, headers });
           setPlayerName(item.name || 'Video');
           setPlayerVisible(true);
         } else {
@@ -177,7 +179,7 @@ export default function HistoryScreen({ navigation }) {
             </View>
             <Text style={styles.emptyTitle}>No history found</Text>
             <Text style={styles.emptyText}>
-              Searched TeraBox links will automatically sync with MongoDB and show up here with thumbnails.
+              Searched TeraBox links will automatically save here so you can access them anytime.
             </Text>
           </View>
         ) : (

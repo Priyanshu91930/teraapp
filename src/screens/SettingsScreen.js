@@ -17,6 +17,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { getStoredUser, checkIsPremium, syncGoogleUser, logoutUser } from '../services/authService';
 import SubscriptionModal from '../components/SubscriptionModal';
+import NotificationCenterModal from '../components/NotificationCenterModal';
+import {
+  getInAppNotifications,
+  getUnreadNotificationCount,
+  markNotificationsAsRead,
+  subscribeNotificationUpdates,
+} from '../services/notificationStorage';
+import { openDirectPlayStorePage } from '../services/storeReview';
 import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
 
@@ -30,15 +38,38 @@ export default function SettingsScreen({ navigation }) {
   const [user, setUser] = useState(null);
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showManageModal, setShowManageModal] = useState(false);
+  const [showNotificationModal, setShowNotificationModal] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [loggingIn, setLoggingIn] = useState(false);
+
+  const loadNotifications = useCallback(async () => {
+    const list = await getInAppNotifications();
+    const unread = await getUnreadNotificationCount();
+    setNotifications(list);
+    setUnreadCount(unread);
+  }, []);
+
+  useEffect(() => {
+    loadNotifications();
+    const unsubscribe = subscribeNotificationUpdates(loadNotifications);
+    return () => unsubscribe();
+  }, [loadNotifications]);
 
   useFocusEffect(
     useCallback(() => {
       getStoredUser().then((u) => {
         setUser(u || null);
       });
-    }, [])
+      loadNotifications();
+    }, [loadNotifications])
   );
+
+  const handleOpenNotifications = async () => {
+    setShowNotificationModal(true);
+    await markNotificationsAsRead();
+    setUnreadCount(0);
+  };
 
   const isLoggedIn = !!(user && user.email);
   const isPremiumUser = checkIsPremium(user);
@@ -53,17 +84,18 @@ export default function SettingsScreen({ navigation }) {
       const userObj = userInfo.user || userInfo;
 
       if (userObj && userObj.email) {
-        const updatedUser = await syncGoogleUser(
+        const syncRes = await syncGoogleUser(
           userObj.email,
           userObj.name || userObj.givenName || userObj.email.split('@')[0],
           userObj.photo || '',
           userObj.id || ''
         );
-        if (updatedUser) {
-          setUser(updatedUser);
-          Alert.alert('✅ Account Synced', `Signed in as ${updatedUser.email}`);
+        if (syncRes && syncRes.success && syncRes.user) {
+          setUser(syncRes.user);
+          Alert.alert('✅ Account Synced', `Signed in as ${syncRes.user.email}`);
         } else {
-          Alert.alert('Login Error', 'Failed to sync Google user with server.');
+          const errMsg = syncRes?.error || 'Failed to sync Google user with server.';
+          Alert.alert('Login Error', errMsg);
         }
       }
     } catch (error) {
@@ -110,11 +142,11 @@ export default function SettingsScreen({ navigation }) {
           <Text style={styles.headerTitle}>Account</Text>
           <TouchableOpacity
             style={styles.circleBtn}
-            onPress={() => Alert.alert('Notifications', 'No new notifications.')}
+            onPress={handleOpenNotifications}
             activeOpacity={0.7}
           >
             <Ionicons name="notifications-outline" size={20} color="#FFFFFF" />
-            <View style={styles.bellBadgeDot} />
+            {unreadCount > 0 && <View style={styles.bellBadgeDot} />}
           </TouchableOpacity>
         </View>
 
@@ -265,7 +297,7 @@ export default function SettingsScreen({ navigation }) {
             <TouchableOpacity
               style={styles.rowItem}
               activeOpacity={0.7}
-              onPress={() => Linking.openURL('https://t.me/teraboxbot').catch(() => {})}
+              onPress={() => Linking.openURL('https://t.me/+L7tcuoCsTaMxZWVl').catch(() => {})}
             >
               <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
                 <Ionicons name="paper-plane-outline" size={18} color="#0284C7" />
@@ -285,6 +317,20 @@ export default function SettingsScreen({ navigation }) {
                 <Ionicons name="shield-checkmark-outline" size={18} color="#64748B" />
               </View>
               <Text style={styles.rowLabel}>Privacy Policy & Terms</Text>
+              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
+            </TouchableOpacity>
+
+            <View style={styles.divider} />
+
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={openDirectPlayStorePage}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+                <Ionicons name="star" size={18} color="#D97706" />
+              </View>
+              <Text style={styles.rowLabel}>Rate Us on Play Store ⭐️</Text>
               <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
             </TouchableOpacity>
           </View>
@@ -442,6 +488,17 @@ export default function SettingsScreen({ navigation }) {
           </View>
         </View>
       </Modal>
+
+      {/* Notification Center Modal */}
+      <NotificationCenterModal
+        visible={showNotificationModal}
+        onClose={() => setShowNotificationModal(false)}
+        notifications={notifications}
+        onClear={() => {
+          setNotifications([]);
+          setUnreadCount(0);
+        }}
+      />
 
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>

@@ -39,12 +39,29 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
   // Stable initial source object for useVideoPlayer to prevent native re-initialization crashes
   const initialSource = useMemo(() => {
+    const isHls = url && (url.includes('.m3u8') || url.includes('mpegURL'));
+    const isDirectCdn = url && (
+      url.includes('freeterabox.com') ||
+      url.includes('1024terabox.com/file/') ||
+      url.includes('bkt=') ||
+      url.includes('fid=') ||
+      url.includes('download.php') ||
+      url.includes('teraboxdownloader.co.in')
+    );
+
     const obj = { uri: url };
-    if (headers && Object.keys(headers).length > 0) {
+
+    if (isHls) {
+      obj.contentType = 'hls';
+    } else if (isDirectCdn || (url && url.includes('.mp4'))) {
+      obj.contentType = 'progressive';
+    }
+
+    if (!isDirectCdn && !isHls && headers && Object.keys(headers).length > 0) {
       obj.headers = headers;
     }
     return obj;
-  }, [url]);
+  }, [url, headers]);
 
   const player = useVideoPlayer(initialSource, (p) => {
     if (!p) return;
@@ -81,8 +98,15 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
   useEffect(() => {
     if (player && activeUrl && activeUrl !== url) {
       console.log('[Player] Replacing stream with fallback source:', activeUrl.substring(0, 80));
+      const isHls = activeUrl.includes('.m3u8') || activeUrl.includes('mpegURL');
+      const isDirectCdn = activeUrl.includes('freeterabox.com') || activeUrl.includes('1024terabox.com/file/') || activeUrl.includes('bkt=') || activeUrl.includes('fid=') || activeUrl.includes('download.php') || activeUrl.includes('teraboxdownloader.co.in');
       const nextSource = { uri: activeUrl };
-      if (headers && Object.keys(headers).length > 0) {
+      if (isHls) {
+        nextSource.contentType = 'hls';
+      } else if (isDirectCdn || activeUrl.includes('.mp4')) {
+        nextSource.contentType = 'progressive';
+      }
+      if (!isDirectCdn && !isHls && headers && Object.keys(headers).length > 0) {
         nextSource.headers = headers;
       }
       try {
@@ -99,31 +123,25 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
   const [hasFatalError, setHasFatalError] = useState(false);
 
-  // Handle status changes and trigger auto-failover on stream error
+  // Handle status changes and trigger auto-failover ONLY after grace period
   useEffect(() => {
+    let failoverTimer;
     console.log('[PLAYER] statusChange:', status, '| dur:', player ? player.duration : 0);
+
     if (status === 'readyToPlay' && player && player.duration > 0) {
       setDuration(player.duration);
       setHasFatalError(false);
     }
+
     if (status === 'error') {
       const errDetails = player && player.error ? (player.error.message || player.error.code || JSON.stringify(player.error)) : 'unknown';
+      console.log('[PLAYER] Transient error state encountered:', errDetails);
 
-      if (activeUrl !== fallbackUrl && fallbackUrl) {
-        console.log('[PLAYER] Stream auto-switching to fallback URL:', fallbackUrl.substring(0, 80));
-        setActiveUrl(fallbackUrl);
-      } else {
-        console.log('[PLAYER] Transient error state encountered:', errDetails);
-      }
-    }
-  }, [status, player, activeUrl, fallbackUrl]);
-
-  // Grace timer: Only set hasFatalError = true if error persists for > 2 seconds
-  useEffect(() => {
-    let timer;
-    if (status === 'error' && (activeUrl === fallbackUrl || !fallbackUrl)) {
-      timer = setTimeout(() => {
-        if (status === 'error') {
+      failoverTimer = setTimeout(() => {
+        if (activeUrl !== fallbackUrl && fallbackUrl) {
+          console.log('[PLAYER] Confirmed error. Stream auto-switching to fallback URL:', fallbackUrl.substring(0, 80));
+          setActiveUrl(fallbackUrl);
+        } else {
           console.log('[PLAYER] Fatal playback error confirmed after grace period');
           setHasFatalError(true);
         }
@@ -131,8 +149,9 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
     } else {
       setHasFatalError(false);
     }
-    return () => clearTimeout(timer);
-  }, [status, activeUrl, fallbackUrl]);
+
+    return () => clearTimeout(failoverTimer);
+  }, [status, player, activeUrl, fallbackUrl]);
 
   // Video Complete Rewarded Ad (Disabled for Premium users)
   useEffect(() => {
@@ -143,9 +162,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
     let completeAd = null;
     let timer = setTimeout(() => {
       try {
-        completeAd = RewardedAd.createForAdRequest(AD_UNIT_IDS.VIDEO_COMPLETE, {
-          requestNonPersonalizedAdsOnly: true,
-        });
+        completeAd = RewardedAd.createForAdRequest(AD_UNIT_IDS.VIDEO_COMPLETE, {});
         videoCompleteAdRef.current = completeAd;
 
         completeAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
@@ -177,9 +194,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
     let closeAd = null;
     let timer = setTimeout(() => {
       try {
-        closeAd = RewardedAd.createForAdRequest(AD_UNIT_IDS.PLAYER_CLOSE, {
-          requestNonPersonalizedAdsOnly: true,
-        });
+        closeAd = RewardedAd.createForAdRequest(AD_UNIT_IDS.PLAYER_CLOSE, {});
         playerCloseAdRef.current = closeAd;
 
         closeAd.addAdEventListener(RewardedAdEventType.LOADED, () => {
@@ -431,7 +446,7 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
         style={st.videoView}
         contentFit={contentFit}
         nativeControls={false}
-        surfaceType="textureView"
+        surfaceType="surfaceView"
         pointerEvents="none"
         allowsPictureInPicture
         startsPictureInPictureAutomatically={false}

@@ -1,15 +1,37 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { addHistoryItem, getHistory } from './storage';
+import { addHistoryItem, getHistory, getSettings } from './storage';
+import { resolveTeraboxLink } from './api';
 import { SegmentedDownloader, probeRangeSupport, computeConnections } from './segmentedDownload';
 import {
+  setupNotificationChannel,
   showDownloadNotification,
   updateDownloadNotification,
   showDownloadCompleteNotification,
   showDownloadFailedNotification,
   dismissDownloadNotification,
 } from './notificationManager';
+
+async function getFreshDownloadUrl(item) {
+  if (!item || !item.url) return null;
+  try {
+    const settings = await getSettings();
+    const baseUrl = settings.apiBaseUrl || 'https://teraapi-six.vercel.app';
+    console.log('[DownloadManager] Auto-refreshing expired CDN link for TeraBox URL:', item.url);
+    const res = await resolveTeraboxLink(baseUrl, item.url);
+    if (res && res.downloadUrl) {
+      console.log('[DownloadManager] Fresh downloadUrl obtained:', res.downloadUrl.substring(0, 80));
+      return {
+        url: res.downloadUrl,
+        headers: res.downloadHeaders || {},
+      };
+    }
+  } catch (err) {
+    console.warn('[DownloadManager] URL refresh failed:', err.message);
+  }
+  return null;
+}
 
 // In-memory mapping of active download instances and listeners
 const activeInstances = {};
@@ -262,6 +284,9 @@ export async function startDownload(name, downloadUrl, size = 'Unknown', thumbna
   const next = [historyItem, ...history];
   await AsyncStorage.setItem('@teraapp/history', JSON.stringify(next.slice(0, 100)));
 
+  // Ensure Android Notification Channel is created and initialized
+  await setupNotificationChannel();
+
   // Show initial notification
   await showDownloadNotification(id, name, 0);
 
@@ -318,21 +343,41 @@ export async function resumeDownload(id) {
     resumeData = null;
   }
 
+  const resumeDataObj = (typeof resumeData === 'object' && resumeData !== null) ? resumeData : {};
+  let targetUrl = resumeDataObj.url || item.dlink || item.download_url || item.url;
+  let targetHeaders = resumeDataObj.headers || (item.downloadHeaders ? JSON.parse(item.downloadHeaders) : {});
+
+  // Probe whether the saved CDN URL is still active or expired (HTTP 403 / 400)
+  const probe = targetUrl ? await probeRangeSupport(targetUrl, targetHeaders) : { supported: false };
+  if ((!probe.supported || probe.total <= 0) && item.url) {
+    console.log('[DownloadManager] Saved CDN URL is expired or inaccessible. Auto-refreshing link from TeraBox API...');
+    const fresh = await getFreshDownloadUrl(item);
+    if (fresh && fresh.url) {
+      targetUrl = fresh.url;
+      targetHeaders = fresh.headers;
+      if (resumeDataObj) {
+        resumeDataObj.url = targetUrl;
+        resumeDataObj.headers = targetHeaders;
+        await updateHistoryStatus(id, 'paused', null, JSON.stringify(resumeDataObj));
+      }
+    }
+  }
+
   // Resume a segmented download from its saved part files
-  if (resumeData && resumeData.type === 'segmented' && resumeData.totalBytes > 0) {
+  if (resumeDataObj && resumeDataObj.type === 'segmented' && resumeDataObj.totalBytes > 0) {
     const startTime = Date.now();
     const progressCallback = createProgressCallback(id, item.name, item.size, startTime);
 
     const seg = new SegmentedDownloader({
-      url: resumeData.url,
-      fileUri: resumeData.fileUri,
-      headers: resumeData.headers || {},
-      totalBytes: resumeData.totalBytes,
-      connections: resumeData.connections || computeConnections(resumeData.totalBytes),
+      url: targetUrl,
+      fileUri: resumeDataObj.fileUri,
+      headers: targetHeaders,
+      totalBytes: resumeDataObj.totalBytes,
+      connections: resumeDataObj.connections || computeConnections(resumeDataObj.totalBytes),
       onProgress: (downloaded) => {
         progressCallback({
           totalBytesWritten: downloaded,
-          totalBytesExpectedToWrite: resumeData.totalBytes,
+          totalBytesExpectedToWrite: resumeDataObj.totalBytes,
         });
       },
     });
@@ -342,7 +387,11 @@ export async function resumeDownload(id) {
       seg,
       pause: async () => {
         seg.pause();
-        await updateHistoryStatus(id, 'paused', null, item.resumeData);
+        await updateHistoryStatus(id, 'paused', null, JSON.stringify({
+          ...resumeDataObj,
+          url: targetUrl,
+          headers: targetHeaders,
+        }));
         notifyListeners(id, { status: 'paused' });
         await dismissDownloadNotification(id);
       },
@@ -369,14 +418,21 @@ export async function resumeDownload(id) {
           delete activeInstances[id];
           return;
         }
+        console.warn('[DownloadManager] Segmented download error during resume:', e.message);
+        // Attempt URL refresh and retry before falling back
+        const fresh = await getFreshDownloadUrl(item);
+        if (fresh && fresh.url) {
+          console.log('[DownloadManager] Retrying segmented resume with fresh URL...');
+          runSegmented(id, item.name, resumeDataObj.fileUri, fresh.url, fresh.headers, resumeDataObj.totalBytes, resumeDataObj.connections || 4, item.size);
+          return;
+        }
+
         await seg.cleanupParts();
         try {
-          await FileSystem.deleteAsync(resumeData.fileUri, { idempotent: true });
-        } catch (err) {
-          // ignore
-        }
+          await FileSystem.deleteAsync(resumeDataObj.fileUri, { idempotent: true });
+        } catch (err) {}
         delete activeInstances[id];
-        runLegacy(id, item.name, resumeData.fileUri, resumeData.url, resumeData.headers || {}, item.size);
+        runLegacy(id, item.name, resumeDataObj.fileUri, targetUrl, targetHeaders, item.size);
       }
     })();
     return;
@@ -385,12 +441,20 @@ export async function resumeDownload(id) {
   // Legacy single-connection resume
   try {
     const startTime = Date.now();
+    const nativeResumeStr = typeof resumeDataObj.resumeData === 'string'
+      ? resumeDataObj.resumeData
+      : (typeof item.resumeData === 'string' ? item.resumeData : null);
+
+    const downloadUrl = targetUrl;
+    const fileUri = resumeDataObj.fileUri || (FileSystem.documentDirectory + item.name.replace(/[^\w\-. ]/g, '_'));
+    const options = resumeDataObj.options || { headers: targetHeaders };
+
     const download = FileSystem.createDownloadResumable(
-      resumeData.url,
-      resumeData.fileUri,
-      resumeData.options,
+      downloadUrl,
+      fileUri,
+      options,
       createProgressCallback(id, item.name, item.size, startTime),
-      resumeData.resumeData
+      nativeResumeStr
     );
 
     activeInstances[id] = download;
