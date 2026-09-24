@@ -16,7 +16,7 @@ import * as RNIap from 'react-native-iap';
 
 const API_BASE_URL = 'https://teraapi-six.vercel.app';
 
-function withTimeout(promise, timeoutMs = 1200) {
+function withTimeout(promise, timeoutMs = 8000) {
   return Promise.race([
     promise,
     new Promise((resolve) =>
@@ -70,14 +70,14 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     const initIAP = async () => {
       try {
         console.log('[IAP Debug] Initializing Google Play Billing Connection...');
-        const connected = await withTimeout(RNIap.initConnection(), 1200).catch((e) => {
+        const connected = await withTimeout(RNIap.initConnection(), 8000).catch((e) => {
           console.log('[IAP Debug] initConnection error:', e.message);
           return false;
         });
 
         if (connected) {
           const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 1200).catch((err) => {
+          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 8000).catch((err) => {
             console.log('[IAP Debug] getSubscriptions catch:', err.message);
             return [];
           });
@@ -172,14 +172,14 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     setLoading(true);
 
     try {
-      console.log('[IAP Step 1] Connecting to Play Billing with timeout...');
-      await withTimeout(RNIap.initConnection(), 1200).catch(() => {});
+      console.log('[IAP Step 1] Connecting to Play Billing with 8s timeout...');
+      await withTimeout(RNIap.initConnection(), 8000).catch(() => {});
 
       if (Platform.OS === 'android') {
         const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-        console.log('[IAP Step 2] Fetching Play Store Subscriptions with 1.2s timeout...');
+        console.log('[IAP Step 2] Fetching Play Store Subscriptions with 8s timeout...');
 
-        let fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 1200).catch((e) => {
+        let fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 8000).catch((e) => {
           console.log('[IAP Step 2 getSubscriptions Error]:', e.message);
           return [];
         });
