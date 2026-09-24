@@ -503,7 +503,7 @@ export default function SettingsScreen({ navigation }) {
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>
           <BannerAd
-            unitId={AD_UNIT_IDS.BANNER}
+            unitId={AD_UNIT_IDS.BANNER_SETTINGS}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           />
         </View>

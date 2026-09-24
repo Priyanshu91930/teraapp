@@ -347,7 +347,7 @@ export default function DownloadScreen() {
       {!isPremiumUser && (
         <View style={styles.bannerAdContainer}>
           <BannerAd
-            unitId={AD_UNIT_IDS.BANNER}
+            unitId={AD_UNIT_IDS.BANNER_DOWNLOAD}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
             onAdLoaded={() => setBannerAdLoaded(true)}
             onAdFailedToLoad={(error) => {
