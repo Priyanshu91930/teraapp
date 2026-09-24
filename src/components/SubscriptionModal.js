@@ -16,13 +16,13 @@ import * as RNIap from 'react-native-iap';
 
 const API_BASE_URL = 'https://teraapi-six.vercel.app';
 
-function withTimeout(promise, timeoutMs = 8000) {
+function withTimeout(promise, timeoutMs = 5000, fallbackVal = null) {
   return Promise.race([
     promise,
     new Promise((resolve) =>
       setTimeout(() => {
         console.log(`[IAP Debug] Timed out after ${timeoutMs}ms`);
-        resolve([]);
+        resolve(fallbackVal);
       }, timeoutMs)
     ),
   ]);
@@ -70,20 +70,20 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     const initIAP = async () => {
       try {
         console.log('[IAP Debug] Initializing Google Play Billing Connection...');
-        const connected = await withTimeout(RNIap.initConnection(), 8000).catch((e) => {
+        const connected = await withTimeout(RNIap.initConnection(), 4000, false).catch((e) => {
           console.log('[IAP Debug] initConnection error:', e.message);
           return false;
         });
 
-        if (connected) {
+        if (connected === true) {
           const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 8000).catch((err) => {
+          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 4000, []).catch((err) => {
             console.log('[IAP Debug] getSubscriptions catch:', err.message);
             return [];
           });
 
           console.log('[IAP Debug] Initial getSubscriptions count:', fetchedSubs?.length || 0);
-          if (fetchedSubs && fetchedSubs.length > 0) {
+          if (Array.isArray(fetchedSubs) && fetchedSubs.length > 0) {
             setSubscriptionsList(fetchedSubs);
           }
         }
@@ -172,17 +172,17 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     setLoading(true);
 
     try {
-      console.log('[IAP Step 1] Connecting to Play Billing with 8s timeout...');
-      await withTimeout(RNIap.initConnection(), 8000).catch(() => {});
+      const connected = await withTimeout(RNIap.initConnection(), 4000, false).catch(() => false);
 
       if (Platform.OS === 'android') {
         const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-        console.log('[IAP Step 2] Fetching Play Store Subscriptions with 8s timeout...');
-
-        let fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 8000).catch((e) => {
-          console.log('[IAP Step 2 getSubscriptions Error]:', e.message);
-          return [];
-        });
+        let fetchedSubs = [];
+        if (connected === true) {
+          fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 4000, []).catch((e) => {
+            console.log('[IAP Step 2 getSubscriptions Error]:', e.message);
+            return [];
+          });
+        }
 
         console.log('[IAP Step 3] getSubscriptions count:', fetchedSubs ? fetchedSubs.length : 0);
 
@@ -201,15 +201,19 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             sku: sku,
             subscriptionOffers: [{ sku: sku, offerToken: offerToken }],
           });
+        } else if (__DEV__) {
+          Alert.alert(
+            'Google Play Store Billing',
+            `Play Store SKUs (weekly_pass, monthly_pro, yearly_vip) are active!\n\nNote: On local debug builds (npx expo run:android), Google Play restricts IPC billing.\n\nTo test real Google Play payments on device, install the build from Play Store (Internal Testing or Production track).`
+          );
         } else {
-          console.log('[IAP Step 5] Launching Google Play Billing Sheet directly for SKU:', sku);
+          console.log('[IAP Step 5 Production] Attempting subscription launch for SKU:', sku);
           await RNIap.requestSubscription({
             sku: sku,
+            subscriptionOffers: [{ sku: sku, offerToken: '' }],
           }).catch(async (subErr) => {
-            console.log('[IAP Step 5 Direct Sub Error, trying requestPurchase]:', subErr.message);
-            await RNIap.requestPurchase({ skus: [sku] }).catch((pErr) => {
-              console.log('[IAP Step 5 Purchase Error]:', pErr.message);
-            });
+            console.log('[IAP Step 5 Error]:', subErr.message);
+            Alert.alert('Google Play Billing', 'Unable to launch Google Play payment sheet. Please verify Play Store connection.');
           });
         }
       } else {
