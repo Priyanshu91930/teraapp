@@ -384,11 +384,37 @@ export default function HomeScreen({ navigation }) {
     }
 
 
+    const showAdBeforeAction = (actionCallback) => {
+      if (isPremiumUser || !rewardedInterstitialRef.current) {
+        actionCallback();
+        return;
+      }
+
+      if (adLoaded) {
+        try {
+          console.log('[HomeScreen] Showing Rewarded Ad before button action...');
+          const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+            AdEventType.CLOSED,
+            () => {
+              unsubClose();
+              setAdLoaded(false);
+              rewardedInterstitialRef.current?.load();
+              actionCallback();
+            }
+          );
+          rewardedInterstitialRef.current.show();
+          return;
+        } catch (err) {
+          console.log('[HomeScreen] Failed to show rewarded ad:', err);
+        }
+      }
+      actionCallback();
+    };
+
     await triggerDownloadWithAd();
 
     async function triggerDownloadWithAd() {
-      // Ad removed from download — start directly
-      await proceedWithDownload();
+      showAdBeforeAction(proceedWithDownload);
     }
 
     async function proceedWithDownload() {
@@ -491,29 +517,34 @@ export default function HomeScreen({ navigation }) {
       setPlayerName(result.name || 'Video');
       setPlayerVisible(true);
     }
-    openPlayer();
+
+    showAdBeforeAction(openPlayer);
   }
 
   const handleOpenTelegram = async () => {
-    try {
-      const rawUrl = result?.shareUrl || input.trim();
-      let shortcode = '';
-      const match = rawUrl.match(/\/s\/([\w-]+)/) || rawUrl.match(/surl=([\w-]+)/);
-      if (match && match[1]) {
-        shortcode = match[1];
-      } else {
-        shortcode = encodeURIComponent(rawUrl);
+    const openTg = async () => {
+      try {
+        const rawUrl = result?.shareUrl || input.trim();
+        let shortcode = '';
+        const match = rawUrl.match(/\/s\/([\w-]+)/) || rawUrl.match(/surl=([\w-]+)/);
+        if (match && match[1]) {
+          shortcode = match[1];
+        } else {
+          shortcode = encodeURIComponent(rawUrl);
+        }
+
+        const botUsername = 'teraboxdownloader2027_bot';
+        const tgUrl = `https://t.me/${botUsername}?start=app_${shortcode}`;
+
+        await Linking.openURL(tgUrl).catch((e) => {
+          console.error('Failed to open Telegram URL:', e);
+        });
+      } catch (err) {
+        console.error('Error in handleOpenTelegram:', err);
       }
+    };
 
-      const botUsername = 'teraboxdownloader2027_bot';
-      const tgUrl = `https://t.me/${botUsername}?start=app_${shortcode}`;
-
-      await Linking.openURL(tgUrl).catch((e) => {
-        console.error('Failed to open Telegram URL:', e);
-      });
-    } catch (err) {
-      console.error('Error in handleOpenTelegram:', err);
-    }
+    showAdBeforeAction(openTg);
   };
 
   async function handlePause() {
