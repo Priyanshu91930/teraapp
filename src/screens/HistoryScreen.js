@@ -285,7 +285,7 @@ export default function HistoryScreen({ navigation }) {
       {!isPremiumUser && (
         <View style={styles.bannerContainer}>
           <BannerAd
-            unitId={AD_UNIT_IDS.BANNER_HISTORY}
+            unitId={AD_UNIT_IDS.BANNER_4}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
           />
         </View>

@@ -684,7 +684,7 @@ export default function HomeScreen({ navigation }) {
           {!isPremiumUser && (
             <View style={[styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }]}>
               <BannerAd
-                unitId={AD_UNIT_IDS.BANNER_TOP}
+                unitId={AD_UNIT_IDS.BANNER_2}
                 size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
                 onAdLoaded={() => setTopBannerAdLoaded(true)}
                 onAdFailedToLoad={(error) => {
@@ -899,7 +899,7 @@ export default function HomeScreen({ navigation }) {
       {!isPremiumUser && (
         <View style={styles.bannerAdContainer}>
           <BannerAd
-            unitId={AD_UNIT_IDS.BANNER}
+            unitId={AD_UNIT_IDS.BANNER_1}
             size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
             onAdLoaded={() => setBannerAdLoaded(true)}
             onAdFailedToLoad={(error) => {
