@@ -188,21 +188,29 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
 
         const allSubs = [...(fetchedSubs || []), ...subscriptionsList];
         const subItem = allSubs.find((s) => s.productId === sku || s.sku === sku);
-        const offerToken = subItem?.subscriptionOfferDetails?.[0]?.offerToken || subItem?.subscriptionOfferDetailsAndroid?.[0]?.offerToken;
+        const offerToken =
+          subItem?.subscriptionOfferDetails?.[0]?.offerToken ||
+          subItem?.subscriptionOfferDetailsAndroid?.[0]?.offerToken ||
+          (subItem?.subscriptionOfferDetails && subItem.subscriptionOfferDetails[0] ? subItem.subscriptionOfferDetails[0].offerToken : null);
 
         console.log('[IAP Step 4] Found subItem:', !!subItem, 'offerToken:', offerToken || 'NONE');
 
         if (offerToken) {
-          console.log('[IAP Step 5] Launching Google Play Billing Sheet for SKU:', sku);
+          console.log('[IAP Step 5] Launching Google Play Billing Sheet with offerToken for SKU:', sku);
           await RNIap.requestSubscription({
             sku: sku,
             subscriptionOffers: [{ sku: sku, offerToken: offerToken }],
           });
         } else {
-          Alert.alert(
-            'Google Play Store',
-            `Play Store Billing is active! To test real Google Play payments on device:\n\n• Build must be downloaded from Play Store (Internal/Production track).\n• Play Console SKUs (weekly_pass, monthly_pro, yearly_vip) are active.`
-          );
+          console.log('[IAP Step 5] Launching Google Play Billing Sheet directly for SKU:', sku);
+          await RNIap.requestSubscription({
+            sku: sku,
+          }).catch(async (subErr) => {
+            console.log('[IAP Step 5 Direct Sub Error, trying requestPurchase]:', subErr.message);
+            await RNIap.requestPurchase({ skus: [sku] }).catch((pErr) => {
+              console.log('[IAP Step 5 Purchase Error]:', pErr.message);
+            });
+          });
         }
       } else {
         await RNIap.requestPurchase({ skus: [sku] });
