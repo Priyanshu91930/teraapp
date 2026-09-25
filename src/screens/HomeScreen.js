@@ -322,40 +322,47 @@ export default function HomeScreen({ navigation }) {
     try {
       const s = settings || await getSettings();
       const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser);
-      const firstResult = (data.list && data.list.length > 0) 
-        ? {
-            ...data.list[0],
-            dlink: data.list[0].dlink || data.list[0].download_url || data.downloadUrl || '',
-            download_url: data.list[0].download_url || data.list[0].dlink || data.downloadUrl || '',
-            stream_url: data.stream_url || data.list[0].stream_url || '',
-            downloadHeaders: data.downloadHeaders || data.list[0].downloadHeaders || {},
-          }
-        : {
-            name: data.name || 'video.mp4',
-            size: data.size || 'Unknown',
-            thumbnail: data.thumbnail || '',
-            dlink: data.downloadUrl || data.dlink || '',
-            download_url: data.downloadUrl || data.dlink || '',
-            stream_url: data.stream_url || '',
-            downloadHeaders: data.downloadHeaders || {},
-          };
+      
+      const rawList = Array.isArray(data.list) && data.list.length > 0 ? data.list : [data];
+      const formattedFiles = rawList.map(item => ({
+        name: item.name || item.server_filename || 'video.mp4',
+        size: item.size || 'Unknown',
+        thumbnail: item.thumbnail || item.thumbs?.url3 || item.thumbs?.url1 || '',
+        dlink: item.dlink || item.download_url || data.downloadUrl || '',
+        download_url: item.download_url || item.dlink || data.downloadUrl || '',
+        stream_url: item.stream_url || data.stream_url || '',
+        downloadHeaders: data.downloadHeaders || item.downloadHeaders || {},
+        shareUrl: url,
+      })).filter(item => item.dlink || item.download_url);
 
-      if (!firstResult.dlink && !firstResult.download_url) {
-        throw new Error('Could not find any files for this link.');
+      if (formattedFiles.length === 0) {
+        throw new Error('Could not find any downloadable files for this link.');
       }
 
-      console.log("[Resolve] Successfully resolved file:", firstResult.name);
-      setResult(firstResult);
+      console.log(`[Resolve] Resolved ${formattedFiles.length} file(s) for link`);
+      if (formattedFiles.length > 1) {
+        const folderResult = {
+          isFolder: true,
+          name: `Folder (${formattedFiles.length} Files)`,
+          size: `${formattedFiles.length} Files`,
+          thumbnail: formattedFiles[0]?.thumbnail || '',
+          files: formattedFiles,
+          shareUrl: url,
+        };
+        setResult(folderResult);
+      } else {
+        setResult(formattedFiles[0]);
+      }
 
-      // Save resolved link item to history with thumbnail and filename
+      // Save resolved link item to history
       try {
         await addHistoryItem({
-          name: firstResult.name,
-          size: firstResult.size,
-          thumbnail: firstResult.thumbnail || '',
+          name: formattedFiles.length > 1 ? `Folder (${formattedFiles.length} Files)` : formattedFiles[0].name,
+          size: formattedFiles.length > 1 ? `${formattedFiles.length} Files` : formattedFiles[0].size,
+          thumbnail: formattedFiles[0]?.thumbnail || '',
           url: url,
-          dlink: firstResult.dlink,
-          stream_url: firstResult.stream_url,
+          dlink: formattedFiles[0]?.dlink || '',
+          stream_url: formattedFiles[0]?.stream_url || '',
           status: 'resolved',
         });
       } catch (histErr) {
@@ -367,6 +374,76 @@ export default function HomeScreen({ navigation }) {
       setParsing(false);
     }
   }
+
+  const handleDownloadItem = async (fileItem) => {
+    const proceed = async () => {
+      try {
+        await startDownload(
+          fileItem.name,
+          fileItem.dlink || fileItem.download_url,
+          fileItem.size,
+          fileItem.thumbnail || '',
+          fileItem.downloadHeaders || {}
+        );
+        const s = settings || await getSettings();
+        if (s && s.apiBaseUrl) {
+          trackActivity(s.apiBaseUrl, 'download').catch(e => console.log('Track activity failed:', e.message));
+        }
+        Alert.alert('📥 Download Started', `"${fileItem.name}" has been added to Downloads.`);
+      } catch (err) {
+        Alert.alert('Download Error', err.message || 'Failed to start download.');
+      }
+    };
+
+    showAdBeforeAction(proceed);
+  };
+
+  const handleWatchItem = (fileItem) => {
+    const proceed = () => {
+      const playUrl = fileItem.stream_url || fileItem.dlink || fileItem.download_url;
+      if (!playUrl) {
+        Alert.alert('Error', 'No playable stream URL found for this file.');
+        return;
+      }
+      const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
+      const headers = isProxyOrCdnUrl ? {} : (fileItem.downloadHeaders || {});
+      let secondaryFallbackUrl = '';
+      if (playUrl !== fileItem.dlink && fileItem.dlink && fileItem.dlink.startsWith('http')) {
+        secondaryFallbackUrl = fileItem.dlink;
+      }
+
+      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers });
+      setPlayerName(fileItem.name || 'Video');
+      setPlayerVisible(true);
+    };
+
+    showAdBeforeAction(proceed);
+  };
+
+  const handleDownloadAllFolderFiles = (files) => {
+    const proceed = async () => {
+      try {
+        let count = 0;
+        for (const f of files) {
+          if (f.dlink || f.download_url) {
+            await startDownload(
+              f.name,
+              f.dlink || f.download_url,
+              f.size,
+              f.thumbnail || '',
+              f.downloadHeaders || {}
+            );
+            count++;
+          }
+        }
+        Alert.alert('📥 Downloads Queued', `${count} files added to your Downloads queue.`);
+      } catch (err) {
+        Alert.alert('Download Error', err.message || 'Failed to queue downloads.');
+      }
+    };
+
+    showAdBeforeAction(proceed);
+  };
 
 
   async function handleDownload() {
@@ -743,127 +820,198 @@ export default function HomeScreen({ navigation }) {
 
           {/* Premium Resolved Result Card / Downloader Card matching mockup */}
           {result && !parsing ? (
-            <View style={styles.resultCard}>
-              <View style={styles.resultHeader}>
-                {result.thumbnail ? (
-                  <Image source={{ uri: result.thumbnail }} style={styles.thumbnailImage} />
-                ) : (
-                  <View style={styles.resultIconWrap}>
-                    <Ionicons name="videocam" size={24} color="#3B82F6" />
+            result.isFolder && Array.isArray(result.files) ? (
+              <View style={styles.resultCard}>
+                <View style={styles.folderHeaderRow}>
+                  <View style={styles.folderIconBadge}>
+                    <Ionicons name="folder-open" size={24} color="#3B82F6" />
                   </View>
-                )}
-                <View style={styles.resultInfo}>
-                  <Text style={styles.resultName} numberOfLines={2}>
-                    {result.name}
-                  </Text>
-                  {downloading ? (
-                    <View style={styles.statusPillRow}>
-                      <View style={styles.statusPill}>
-                        <Ionicons name="cloud-download-outline" size={12} color="#1E3A8A" />
-                        <Text style={styles.statusPillText}>
-                          {isPaused ? 'Paused' : 'Downloading'}
-                        </Text>
-                      </View>
-                      <Text style={styles.totalSizeText}>{totalBytes}</Text>
-                    </View>
-                  ) : (
-                    <Text style={styles.resultSize}>{result.size}</Text>
-                  )}
-                </View>
-              </View>
-
-              {downloading ? (
-                <View style={styles.progressContainer}>
-                  {/* Speed and Time remaining badges */}
-                  <View style={styles.statsBadgesRow}>
-                    <View style={styles.statBadge}>
-                      <Ionicons name="speedometer-outline" size={14} color="#2563EB" />
-                      <Text style={styles.statBadgeText}>{downloadSpeed}</Text>
-                    </View>
-                    <View style={styles.statBadge}>
-                      <Ionicons name="time-outline" size={14} color="#2563EB" />
-                      <Text style={styles.statBadgeText}>{timeRemaining}</Text>
-                    </View>
-                  </View>
-
-                  {/* Progress numeric indicators */}
-                  <View style={styles.progressTextRow}>
-                    <Text style={styles.progressBytesText}>
-                      {bytesWritten} / {totalBytes}
+                  <View style={{ flex: 1, marginLeft: 12 }}>
+                    <Text style={styles.resultName} numberOfLines={1}>
+                      {result.name}
                     </Text>
-                    <Text style={styles.progressPercentText}>
-                      {Math.round(progress * 100)}%
+                    <Text style={styles.resultSize}>
+                      {result.files.length} items ready to download
                     </Text>
-                  </View>
-
-                  {/* Clean progress bar */}
-                  <View style={styles.progressTrack}>
-                    <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
-                  </View>
-
-                  {/* Action controls: Pause/Resume and Cancel */}
-                  <View style={styles.controlButtonsRow}>
-                    {isPaused ? (
-                      <TouchableOpacity
-                        style={[styles.controlBtn, styles.pauseBtn]}
-                        onPress={handleResume}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="play-outline" size={18} color="#2563EB" />
-                        <Text style={styles.controlBtnTextBlue}>Resume</Text>
-                      </TouchableOpacity>
-                    ) : (
-                      <TouchableOpacity
-                        style={[styles.controlBtn, styles.pauseBtn]}
-                        onPress={handlePause}
-                        activeOpacity={0.8}
-                      >
-                        <Ionicons name="pause-outline" size={18} color="#2563EB" />
-                        <Text style={styles.controlBtnTextBlue}>Pause</Text>
-                      </TouchableOpacity>
-                    )}
-
-                    <TouchableOpacity
-                      style={[styles.controlBtn, styles.cancelBtn]}
-                      onPress={handleCancel}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="close-outline" size={18} color="#EF4444" />
-                      <Text style={styles.controlBtnTextRed}>Cancel</Text>
-                    </TouchableOpacity>
-                  </View>
-                </View>
-              ) : (
-                <View style={styles.actionBtnsContainer}>
-                  <View style={styles.actionBtnsRow}>
-                    <TouchableOpacity
-                      style={styles.downloadBtn}
-                      onPress={handleDownload}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="download-outline" size={18} color="#FFFFFF" />
-                      <Text style={styles.downloadBtnText}>Download File</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.watchBtn}
-                      onPress={handleWatch}
-                      activeOpacity={0.8}
-                    >
-                      <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" />
-                      <Text style={styles.watchBtnText}>Watch</Text>
-                    </TouchableOpacity>
                   </View>
                   <TouchableOpacity
-                    style={styles.telegramBtn}
-                    onPress={handleOpenTelegram}
+                    style={styles.downloadAllBtn}
+                    onPress={() => handleDownloadAllFolderFiles(result.files)}
                     activeOpacity={0.8}
                   >
-                    <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
-                    <Text style={styles.telegramBtnText}>Get in Telegram</Text>
+                    <Ionicons name="cloud-download" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
+                    <Text style={styles.downloadAllBtnText}>Download All</Text>
                   </TouchableOpacity>
                 </View>
-              )}
-            </View>
+
+                <View style={styles.folderDivider} />
+
+                <View style={styles.folderFilesContainer}>
+                  {result.files.map((file, idx) => {
+                    const isVideo = file.stream_url || (file.name && /\.(mp4|mkv|avi|mov|webm|flv|3gp)$/i.test(file.name));
+                    return (
+                      <View key={idx} style={styles.folderFileItem}>
+                        {file.thumbnail ? (
+                          <Image source={{ uri: file.thumbnail }} style={styles.folderThumbImg} />
+                        ) : (
+                          <View style={styles.folderThumbFallback}>
+                            <Ionicons name={isVideo ? "videocam-outline" : "document-text-outline"} size={20} color="#3B82F6" />
+                          </View>
+                        )}
+                        <View style={styles.folderFileInfo}>
+                          <Text style={styles.folderFileName} numberOfLines={1}>
+                            {file.name}
+                          </Text>
+                          <Text style={styles.folderFileSize}>{file.size}</Text>
+                        </View>
+
+                        <View style={styles.folderFileActions}>
+                          {isVideo ? (
+                            <TouchableOpacity
+                              style={styles.folderActionIconBtn}
+                              onPress={() => handleWatchItem(file)}
+                              activeOpacity={0.7}
+                            >
+                              <Ionicons name="play-circle" size={26} color="#6366F1" />
+                            </TouchableOpacity>
+                          ) : null}
+
+                          <TouchableOpacity
+                            style={styles.folderActionIconBtn}
+                            onPress={() => handleDownloadItem(file)}
+                            activeOpacity={0.7}
+                          >
+                            <Ionicons name="arrow-down-circle" size={26} color="#10B981" />
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ) : (
+              <View style={styles.resultCard}>
+                <View style={styles.resultHeader}>
+                  {result.thumbnail ? (
+                    <Image source={{ uri: result.thumbnail }} style={styles.thumbnailImage} />
+                  ) : (
+                    <View style={styles.resultIconWrap}>
+                      <Ionicons name="videocam" size={24} color="#3B82F6" />
+                    </View>
+                  )}
+                  <View style={styles.resultInfo}>
+                    <Text style={styles.resultName} numberOfLines={2}>
+                      {result.name}
+                    </Text>
+                    {downloading ? (
+                      <View style={styles.statusPillRow}>
+                        <View style={styles.statusPill}>
+                          <Ionicons name="cloud-download-outline" size={12} color="#1E3A8A" />
+                          <Text style={styles.statusPillText}>
+                            {isPaused ? 'Paused' : 'Downloading'}
+                          </Text>
+                        </View>
+                        <Text style={styles.totalSizeText}>{totalBytes}</Text>
+                      </View>
+                    ) : (
+                      <Text style={styles.resultSize}>{result.size}</Text>
+                    )}
+                  </View>
+                </View>
+
+                {downloading ? (
+                  <View style={styles.progressContainer}>
+                    {/* Speed and Time remaining badges */}
+                    <View style={styles.statsBadgesRow}>
+                      <View style={styles.statBadge}>
+                        <Ionicons name="speedometer-outline" size={14} color="#2563EB" />
+                        <Text style={styles.statBadgeText}>{downloadSpeed}</Text>
+                      </View>
+                      <View style={styles.statBadge}>
+                        <Ionicons name="time-outline" size={14} color="#2563EB" />
+                        <Text style={styles.statBadgeText}>{timeRemaining}</Text>
+                      </View>
+                    </View>
+
+                    {/* Progress numeric indicators */}
+                    <View style={styles.progressTextRow}>
+                      <Text style={styles.progressBytesText}>
+                        {bytesWritten} / {totalBytes}
+                      </Text>
+                      <Text style={styles.progressPercentText}>
+                        {Math.round(progress * 100)}%
+                      </Text>
+                    </View>
+
+                    {/* Clean progress bar */}
+                    <View style={styles.progressTrack}>
+                      <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+                    </View>
+
+                    {/* Action controls: Pause/Resume and Cancel */}
+                    <View style={styles.controlButtonsRow}>
+                      {isPaused ? (
+                        <TouchableOpacity
+                          style={[styles.controlBtn, styles.pauseBtn]}
+                          onPress={handleResume}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="play-outline" size={18} color="#2563EB" />
+                          <Text style={styles.controlBtnTextBlue}>Resume</Text>
+                        </TouchableOpacity>
+                      ) : (
+                        <TouchableOpacity
+                          style={[styles.controlBtn, styles.pauseBtn]}
+                          onPress={handlePause}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="pause-outline" size={18} color="#2563EB" />
+                          <Text style={styles.controlBtnTextBlue}>Pause</Text>
+                        </TouchableOpacity>
+                      )}
+
+                      <TouchableOpacity
+                        style={[styles.controlBtn, styles.cancelBtn]}
+                        onPress={handleCancel}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="close-outline" size={18} color="#EF4444" />
+                        <Text style={styles.controlBtnTextRed}>Cancel</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={styles.actionBtnsContainer}>
+                    <View style={styles.actionBtnsRow}>
+                      <TouchableOpacity
+                        style={styles.downloadBtn}
+                        onPress={handleDownload}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="download-outline" size={18} color="#FFFFFF" />
+                        <Text style={styles.downloadBtnText}>Download File</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={styles.watchBtn}
+                        onPress={handleWatch}
+                        activeOpacity={0.8}
+                      >
+                        <Ionicons name="play-circle-outline" size={18} color="#FFFFFF" />
+                        <Text style={styles.watchBtnText}>Watch</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.telegramBtn}
+                      onPress={handleOpenTelegram}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name="paper-plane-outline" size={18} color="#FFFFFF" />
+                      <Text style={styles.telegramBtnText}>Get in Telegram</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+              </View>
+            )
           ) : null}
 
 
@@ -1523,5 +1671,88 @@ const styles = StyleSheet.create({
     marginTop: 6,
     width: '100%',
     textAlign: 'center',
+  },
+  folderHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  folderIconBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DBEAFE',
+  },
+  downloadAllBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#3B82F6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  downloadAllBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  folderDivider: {
+    height: 1,
+    backgroundColor: '#E2E8F0',
+    marginVertical: 10,
+  },
+  folderFilesContainer: {
+    marginTop: 4,
+  },
+  folderFileItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F8FAFC',
+    borderRadius: 10,
+    padding: 10,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  folderThumbImg: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    backgroundColor: '#E2E8F0',
+  },
+  folderThumbFallback: {
+    width: 40,
+    height: 40,
+    borderRadius: 6,
+    backgroundColor: '#EFF6FF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  folderFileInfo: {
+    flex: 1,
+    marginLeft: 10,
+    marginRight: 6,
+  },
+  folderFileName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#0F172A',
+  },
+  folderFileSize: {
+    fontSize: 11,
+    color: '#64748B',
+    marginTop: 2,
+  },
+  folderFileActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  folderActionIconBtn: {
+    padding: 4,
+    marginLeft: 6,
   },
 });
