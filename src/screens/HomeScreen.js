@@ -321,7 +321,7 @@ export default function HomeScreen({ navigation }) {
 
     try {
       const s = settings || await getSettings();
-      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, s.useProxy);
+      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser);
       const firstResult = (data.list && data.list.length > 0) 
         ? {
             ...data.list[0],

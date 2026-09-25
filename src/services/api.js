@@ -7,21 +7,31 @@ export function extractTeraboxUrl(text) {
   return match ? match[0] : null;
 }
 
-export async function resolveTeraboxLink(baseUrl, url, quality = 'auto') {
+export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip = false) {
   if (!baseUrl) {
     throw new Error('API server URL is not set. Open Settings and add your server URL.');
   }
 
   const endpoint = baseUrl.replace(/\/+$/, '');
   const query = new URLSearchParams({ url, quality, from: 'app' });
+  if (isVip) {
+    query.set('is_vip', 'true');
+  }
+
+  const headers = { 
+    'Content-Type': 'application/json',
+    'x-api-key': 'AnihubTeraSecureKey2026_xYz',
+    'x-client-type': 'android_app',
+    'x-client-source': 'app'
+  };
+  if (isVip) {
+    headers['x-user-tier'] = 'premium';
+    headers['x-is-vip'] = 'true';
+  }
+
   const res = await fetch(`${endpoint}/parse?${query.toString()}`, {
     method: 'GET',
-    headers: { 
-      'Content-Type': 'application/json',
-      'x-api-key': 'AnihubTeraSecureKey2026_xYz',
-      'x-client-type': 'android_app',
-      'x-client-source': 'app'
-    },
+    headers,
   });
 
   if (!res.ok) {
