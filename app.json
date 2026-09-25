@@ -2,7 +2,7 @@
   "expo": {
     "name": "Tera Downloader",
     "slug": "teradownloader",
-    "version": "1.1.0",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,7 +16,7 @@
       },
       "package": "com.anihub.teradownloader",
       "googleServicesFile": "./google-services.json",
-      "versionCode": 11,
+      "versionCode": 23,
       "permissions": [
         "com.android.vending.BILLING"
       ]
@@ -25,6 +25,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "expo-iap",
       "@react-native-google-signin/google-signin",
       "./plugins/withKotlinVersion",
       "expo-sharing",

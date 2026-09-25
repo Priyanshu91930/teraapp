@@ -195,6 +195,33 @@ export default function HomeScreen({ navigation }) {
     return url;
   }
 
+  const showAdBeforeAction = (actionCallback) => {
+    if (isPremiumUser || !rewardedInterstitialRef.current) {
+      actionCallback();
+      return;
+    }
+
+    if (adLoaded) {
+      try {
+        console.log('[HomeScreen] Showing Rewarded Ad before button action...');
+        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.CLOSED,
+          () => {
+            unsubClose();
+            setAdLoaded(false);
+            rewardedInterstitialRef.current?.load();
+            actionCallback();
+          }
+        );
+        rewardedInterstitialRef.current.show();
+        return;
+      } catch (err) {
+        console.log('[HomeScreen] Failed to show rewarded ad:', err);
+      }
+    }
+    actionCallback();
+  };
+
   async function handleResolve() {
     const url = validate();
     if (!url) return;
@@ -384,32 +411,6 @@ export default function HomeScreen({ navigation }) {
     }
 
 
-    const showAdBeforeAction = (actionCallback) => {
-      if (isPremiumUser || !rewardedInterstitialRef.current) {
-        actionCallback();
-        return;
-      }
-
-      if (adLoaded) {
-        try {
-          console.log('[HomeScreen] Showing Rewarded Ad before button action...');
-          const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
-            AdEventType.CLOSED,
-            () => {
-              unsubClose();
-              setAdLoaded(false);
-              rewardedInterstitialRef.current?.load();
-              actionCallback();
-            }
-          );
-          rewardedInterstitialRef.current.show();
-          return;
-        } catch (err) {
-          console.log('[HomeScreen] Failed to show rewarded ad:', err);
-        }
-      }
-      actionCallback();
-    };
 
     await triggerDownloadWithAd();
 

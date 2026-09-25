@@ -8,30 +8,26 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as RNIap from 'react-native-iap';
+import {
+  initConnection,
+  fetchProducts,
+  requestPurchase,
+  finishTransaction,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+} from 'expo-iap';
 
 const API_BASE_URL = 'https://teraapi-six.vercel.app';
-
-function withTimeout(promise, timeoutMs = 5000, fallbackVal = null) {
-  return Promise.race([
-    promise,
-    new Promise((resolve) =>
-      setTimeout(() => {
-        console.log(`[IAP Debug] Timed out after ${timeoutMs}ms`);
-        resolve(fallbackVal);
-      }, timeoutMs)
-    ),
-  ]);
-}
+const SKUS = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
 
 export default function SubscriptionModal({ visible, onClose, user, onPaymentSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('monthly'); // 'weekly', 'monthly', 'yearly'
   const [loading, setLoading] = useState(false);
   const [subscriptionsList, setSubscriptionsList] = useState([]);
+  const [isConnected, setIsConnected] = useState(false);
 
   const plans = [
     {
@@ -64,68 +60,72 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
   ];
 
   useEffect(() => {
-    let purchaseUpdateSubscription;
-    let purchaseErrorSubscription;
+    let updateSub;
+    let errorSub;
+    let isMounted = true;
 
-    const initIAP = async () => {
+    async function initIAP() {
+      if (!visible) return;
+
       try {
-        console.log('[IAP Debug] Initializing Google Play Billing Connection...');
-        const connected = await withTimeout(RNIap.initConnection(), 4000, false).catch((e) => {
-          console.log('[IAP Debug] initConnection error:', e.message);
+        console.log('[IAP Init] Setting up purchase listeners...');
+        updateSub = purchaseUpdatedListener(async (purchase) => {
+          console.log('[IAP Event] Purchase updated:', JSON.stringify(purchase));
+          const receipt = purchase?.transactionReceipt || purchase?.purchaseToken;
+          if (receipt) {
+            await verifyAndActivatePurchase(receipt, purchase.productId);
+            await finishTransaction({ purchase, isConsumable: false }).catch(() => {});
+          }
+        });
+
+        errorSub = purchaseErrorListener((error) => {
+          console.log('[IAP Event Error]:', JSON.stringify(error));
+          setLoading(false);
+        });
+
+        console.log('[IAP Init] Initializing Play Store Connection...');
+        const result = await initConnection().catch((err) => {
+          console.log('[IAP Init Warning] initConnection failed:', err?.message || err);
           return false;
         });
 
-        if (connected === true) {
-          const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-          const fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 4000, []).catch((err) => {
-            console.log('[IAP Debug] getSubscriptions catch:', err.message);
+        if (isMounted) {
+          setIsConnected(!!result);
+        }
+
+        if (result && isMounted) {
+          console.log('[IAP Init] Querying Play Store Products:', SKUS);
+          const prods = await fetchProducts({ skus: SKUS, type: 'in-app' }).catch((err) => {
+            console.log('[IAP Init Warning] fetchProducts failed:', err?.message || err);
             return [];
           });
 
-          console.log('[IAP Debug] Initial getSubscriptions count:', fetchedSubs?.length || 0);
-          if (Array.isArray(fetchedSubs) && fetchedSubs.length > 0) {
-            setSubscriptionsList(fetchedSubs);
+          if (isMounted && prods && Array.isArray(prods) && prods.length > 0) {
+            setSubscriptionsList(prods);
           }
         }
-
-        if (Platform.OS === 'android') {
-          await RNIap.flushFailedPurchasesCachedAsPendingAndroid().catch(() => {});
-        }
-
-        purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-          console.log('[IAP Debug] purchaseUpdatedListener triggered for productId:', purchase.productId);
-          const receipt = purchase.transactionReceipt || purchase.purchaseToken;
-          if (receipt) {
-            await verifyAndActivatePurchase(receipt, purchase.productId);
-            await RNIap.finishTransaction({ purchase, isConsumable: false }).catch(() => {});
-          }
-        });
-
-        purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
-          setLoading(false);
-          if (error.code !== 'E_USER_CANCELLED') {
-            console.warn('[IAP Debug] Purchase Error Event:', error);
-          }
-        });
-      } catch (err) {
-        console.log('[IAP Debug] initIAP Exception:', err.message);
+      } catch (e) {
+        console.log('[IAP Init Exception]:', e?.message || e);
       }
-    };
-
-    if (visible) {
-      initIAP();
     }
 
+    initIAP();
+
     return () => {
-      if (purchaseUpdateSubscription) purchaseUpdateSubscription.remove();
-      if (purchaseErrorSubscription) purchaseErrorSubscription.remove();
-      RNIap.endConnection().catch(() => {});
+      isMounted = false;
+      if (updateSub && typeof updateSub.remove === 'function') updateSub.remove();
+      if (errorSub && typeof errorSub.remove === 'function') errorSub.remove();
     };
   }, [visible]);
 
   async function verifyAndActivatePurchase(purchaseToken, productId) {
     try {
       setLoading(true);
+      console.log('[IAP Verification] Sending token to backend server...', {
+        email: user?.email,
+        productId,
+        purchaseToken,
+      });
       const res = await fetch(`${API_BASE_URL}/api/payment/verify-play-purchase`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -137,6 +137,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         }),
       });
       const data = await res.json();
+      console.log('[IAP Verification Response]:', JSON.stringify(data));
       setLoading(false);
 
       if (data && data.success) {
@@ -151,79 +152,54 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       }
     } catch (e) {
       setLoading(false);
+      console.log('[IAP Verification Exception]:', e?.message || e);
       Alert.alert('Activation Error', 'Network error during plan activation.');
     }
   }
 
   async function handleBuyNow() {
-    if (!user || !user.email) {
-      Alert.alert(
-        '🔐 Sign In Required',
-        'Please sign in with your Google Account first so your VIP plan can be linked to your email across App, Web & Telegram.',
-        [{ text: 'OK' }]
-      );
-      return;
-    }
-
-    const currentPlan = plans.find((p) => p.id === selectedPlan);
-    const sku = currentPlan?.sku || 'monthly_pro';
-    console.log('[IAP Debug] Pay Button Pressed -> Selected Plan:', selectedPlan, 'Target SKU:', sku);
-
-    setLoading(true);
-
+    console.log('[IAP Action] User clicked Pay button!');
     try {
-      const connected = await withTimeout(RNIap.initConnection(), 4000, false).catch(() => false);
+      if (!user || !user.email) {
+        console.log('[IAP Action] Rejected: User email not logged in');
+        Alert.alert(
+          '🔐 Sign In Required',
+          'Please sign in with your Google Account first so your VIP plan can be linked to your email across App, Web & Telegram.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
-      if (Platform.OS === 'android') {
-        const skus = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
-        let fetchedSubs = [];
-        if (connected === true) {
-          fetchedSubs = await withTimeout(RNIap.getSubscriptions({ skus }), 4000, []).catch((e) => {
-            console.log('[IAP Step 2 getSubscriptions Error]:', e.message);
-            return [];
-          });
-        }
+      const currentPlan = plans.find((p) => p.id === selectedPlan);
+      const sku = currentPlan?.sku || 'monthly_pro';
+      console.log('[IAP Action] Target SKU:', sku, '| User Email:', user?.email);
 
-        console.log('[IAP Step 3] getSubscriptions count:', fetchedSubs ? fetchedSubs.length : 0);
+      setLoading(true);
 
-        const allSubs = [...(fetchedSubs || []), ...subscriptionsList];
-        const subItem = allSubs.find((s) => s.productId === sku || s.sku === sku);
-        const offerToken =
-          subItem?.subscriptionOfferDetails?.[0]?.offerToken ||
-          subItem?.subscriptionOfferDetailsAndroid?.[0]?.offerToken ||
-          (subItem?.subscriptionOfferDetails && subItem.subscriptionOfferDetails[0] ? subItem.subscriptionOfferDetails[0].offerToken : null);
-
-        console.log('[IAP Step 4] Found subItem:', !!subItem, 'offerToken:', offerToken || 'NONE');
-
-        if (offerToken) {
-          console.log('[IAP Step 5] Launching Google Play Billing Sheet with offerToken for SKU:', sku);
-          await RNIap.requestSubscription({
-            sku: sku,
-            subscriptionOffers: [{ sku: sku, offerToken: offerToken }],
-          });
-        } else if (__DEV__) {
+      // Launch Google Play Store Payment Sheet
+      console.log('[IAP Action] Launching Google Play Store requestPurchase for SKU:', sku);
+      try {
+        await requestPurchase({
+          type: 'in-app',
+          request: {
+            google: { skus: [sku] },
+            apple: { sku: sku },
+          },
+        });
+      } catch (reqErr) {
+        setLoading(false);
+        console.log('[IAP Action Error] requestPurchase Exception:', JSON.stringify(reqErr || {}));
+        const code = reqErr?.code || '';
+        if (code !== 'E_USER_CANCELLED' && code !== 'user-cancelled' && code !== 'UserCancelled') {
           Alert.alert(
             'Google Play Store Billing',
-            `Play Store SKUs (weekly_pass, monthly_pro, yearly_vip) are active!\n\nNote: On local debug builds (npx expo run:android), Google Play restricts IPC billing.\n\nTo test real Google Play payments on device, install the build from Play Store (Internal Testing or Production track).`
+            reqErr?.message || reqErr?.debugMessage || 'Payment cancelled or unavailable.'
           );
-        } else {
-          console.log('[IAP Step 5 Production] Attempting subscription launch for SKU:', sku);
-          await RNIap.requestSubscription({
-            sku: sku,
-            subscriptionOffers: [{ sku: sku, offerToken: '' }],
-          }).catch(async (subErr) => {
-            console.log('[IAP Step 5 Error]:', subErr.message);
-            Alert.alert('Google Play Billing', 'Unable to launch Google Play payment sheet. Please verify Play Store connection.');
-          });
         }
-      } else {
-        await RNIap.requestPurchase({ skus: [sku] });
       }
-    } catch (err) {
-      console.log('[IAP Step Exception]', err.message || err);
-      if (err.code !== 'E_USER_CANCELLED') {
-        Alert.alert('Google Play Billing', err.message || 'Payment cancelled or unavailable.');
-      }
+    } catch (topErr) {
+      setLoading(false);
+      console.log('[IAP Action Error] Top-level Exception:', topErr?.message || topErr);
     } finally {
       setLoading(false);
     }
@@ -266,7 +242,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
 
               <View style={styles.featureItem}>
                 <Ionicons name="hardware-chip-outline" size={18} color="#F59E0B" />
-                <Text style={styles.featureText}>1 Subscription = 3 Memberships (App, Web & Telegram)</Text>
+                <Text style={styles.featureText}>1 Subscription = 3 Memberships (App, Web & Bot)</Text>
               </View>
 
               <View style={styles.featureItem}>
@@ -284,9 +260,11 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             <Text style={styles.selectPlanLabel}>Select Plan:</Text>
             {plans.map((item) => {
               const isSelected = selectedPlan === item.id;
-              const subItem = subscriptionsList.find((s) => s.productId === item.sku || s.sku === item.sku);
-              const playStorePrice = subItem?.subscriptionOfferDetails?.[0]?.pricingPhases?.pricingPhaseList?.[0]?.formattedPrice || subItem?.localizedPrice;
-              const displayPrice = playStorePrice || item.price;
+              const storeProd = (subscriptionsList || []).find(
+                (p) => p && (p.id === item.sku || p.productId === item.sku || p.sku === item.sku)
+              );
+              const displayPrice = storeProd?.displayPrice || item.price;
+
               return (
                 <TouchableOpacity
                   key={item.id}
