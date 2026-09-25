@@ -204,19 +204,35 @@ export default function HomeScreen({ navigation }) {
     if (adLoaded) {
       try {
         console.log('[HomeScreen] Showing Rewarded Ad before button action...');
+        let executed = false;
+        const safeExecute = () => {
+          if (!executed) {
+            executed = true;
+            actionCallback();
+          }
+        };
+
+        const timer = setTimeout(() => {
+          console.warn('[HomeScreen] Ad timeout fallback triggered');
+          safeExecute();
+        }, 8000);
+
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
           AdEventType.CLOSED,
           () => {
-            unsubClose();
+            clearTimeout(timer);
+            try { unsubClose(); } catch (e) {}
             setAdLoaded(false);
             rewardedInterstitialRef.current?.load();
-            actionCallback();
+            safeExecute();
           }
         );
         rewardedInterstitialRef.current.show();
         return;
       } catch (err) {
         console.log('[HomeScreen] Failed to show rewarded ad:', err);
+        actionCallback();
+        return;
       }
     }
     actionCallback();
@@ -376,21 +392,30 @@ export default function HomeScreen({ navigation }) {
   }
 
   const handleDownloadItem = async (fileItem) => {
+    const dlUrl = fileItem?.dlink || fileItem?.download_url || fileItem?.url;
+    if (!dlUrl) {
+      Alert.alert('Download Link Missing', 'Could not get download link for this file.');
+      return;
+    }
+
     const proceed = async () => {
       try {
-        await startDownload(
+        console.log('[Folder Download] Starting for file:', fileItem.name);
+        const id = await startDownload(
           fileItem.name,
-          fileItem.dlink || fileItem.download_url,
-          fileItem.size,
+          dlUrl,
+          fileItem.size || 'Unknown',
           fileItem.thumbnail || '',
           fileItem.downloadHeaders || {}
         );
+        console.log('[Folder Download] Started task id:', id);
         const s = settings || await getSettings();
         if (s && s.apiBaseUrl) {
           trackActivity(s.apiBaseUrl, 'download').catch(e => console.log('Track activity failed:', e.message));
         }
         Alert.alert('📥 Download Started', `"${fileItem.name}" has been added to Downloads.`);
       } catch (err) {
+        console.error('[Folder Download] Failed:', err);
         Alert.alert('Download Error', err.message || 'Failed to start download.');
       }
     };
@@ -421,15 +446,17 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleDownloadAllFolderFiles = (files) => {
+    if (!Array.isArray(files) || files.length === 0) return;
     const proceed = async () => {
       try {
         let count = 0;
         for (const f of files) {
-          if (f.dlink || f.download_url) {
+          const dlUrl = f.dlink || f.download_url || f.url;
+          if (dlUrl) {
             await startDownload(
               f.name,
-              f.dlink || f.download_url,
-              f.size,
+              dlUrl,
+              f.size || 'Unknown',
               f.thumbnail || '',
               f.downloadHeaders || {}
             );
@@ -438,6 +465,7 @@ export default function HomeScreen({ navigation }) {
         }
         Alert.alert('📥 Downloads Queued', `${count} files added to your Downloads queue.`);
       } catch (err) {
+        console.error('[Batch Download] Failed:', err);
         Alert.alert('Download Error', err.message || 'Failed to queue downloads.');
       }
     };
@@ -869,19 +897,21 @@ export default function HomeScreen({ navigation }) {
                           {isVideo ? (
                             <TouchableOpacity
                               style={styles.folderActionIconBtn}
+                              hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
                               onPress={() => handleWatchItem(file)}
                               activeOpacity={0.7}
                             >
-                              <Ionicons name="play-circle" size={26} color="#6366F1" />
+                              <Ionicons name="play-circle" size={28} color="#6366F1" />
                             </TouchableOpacity>
                           ) : null}
 
                           <TouchableOpacity
                             style={styles.folderActionIconBtn}
+                            hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
                             onPress={() => handleDownloadItem(file)}
                             activeOpacity={0.7}
                           >
-                            <Ionicons name="arrow-down-circle" size={26} color="#10B981" />
+                            <Ionicons name="arrow-down-circle" size={28} color="#10B981" />
                           </TouchableOpacity>
                         </View>
                       </View>
