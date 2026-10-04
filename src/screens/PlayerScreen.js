@@ -57,8 +57,13 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
       obj.contentType = 'progressive';
     }
 
-    if (!isDirectCdn && !isHls && headers && Object.keys(headers).length > 0) {
-      obj.headers = headers;
+    const defaultHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': 'https://www.terabox.com/',
+    };
+
+    if (!isHls) {
+      obj.headers = { ...defaultHeaders, ...(headers || {}) };
     }
     return obj;
   }, [url, headers]);
@@ -106,8 +111,12 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
       } else if (isDirectCdn || activeUrl.includes('.mp4')) {
         nextSource.contentType = 'progressive';
       }
-      if (!isDirectCdn && !isHls && headers && Object.keys(headers).length > 0) {
-        nextSource.headers = headers;
+      if (!isHls) {
+        const defaultHeaders = {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.terabox.com/',
+        };
+        nextSource.headers = { ...defaultHeaders, ...(headers || {}) };
       }
       try {
         if (player.replaceAsync) {
