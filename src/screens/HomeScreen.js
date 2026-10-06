@@ -640,10 +640,9 @@ export default function HomeScreen({ navigation }) {
   function getPlayableStreamUrl(rawUrl, fileName = 'video.mp4') {
     if (!rawUrl) return '';
     if (rawUrl.startsWith('data:') || rawUrl.includes('.m3u8')) return rawUrl;
-    if (rawUrl.includes('download.php') || rawUrl.includes('teraboxdownloader.co.in')) return rawUrl;
+    if (rawUrl.includes('terabox-stream.solankipriyanshu94.workers.dev')) return rawUrl;
     const encodedUrl = encodeURIComponent(rawUrl);
-    const encodedName = encodeURIComponent(fileName || 'video.mp4');
-    return `https://teraboxdownloader.co.in/download.php?stream=1&filename=${encodedName}&url=${encodedUrl}`;
+    return `https://terabox-stream.solankipriyanshu94.workers.dev/?url=${encodedUrl}`;
   }
 
   const handleWatchItem = (fileItem) => {
@@ -685,8 +684,7 @@ export default function HomeScreen({ navigation }) {
         'Referer': 'https://www.terabox.com/',
       };
       const headers = { ...defaultHeaders, ...(fileItem.downloadHeaders || {}) };
-      let secondaryFallbackUrl = '';
-      if (playUrl !== fileItem.dlink && fileItem.dlink && fileItem.dlink.startsWith('http')) {
+      if (!secondaryFallbackUrl && playUrl !== fileItem.dlink && fileItem.dlink && fileItem.dlink.startsWith('http')) {
         secondaryFallbackUrl = fileItem.dlink;
       }
 
