@@ -642,7 +642,7 @@ export default function HomeScreen({ navigation }) {
       const rawStreamUrl = fileItem.stream_url || '';
       let playUrl = '';
 
-      if (rawStreamUrl.startsWith('http') || rawStreamUrl.startsWith('data:')) {
+      if (rawStreamUrl.startsWith('data:') || rawStreamUrl.includes('.m3u8')) {
         if (rawStreamUrl.startsWith('data:')) {
           try {
             const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
@@ -821,7 +821,7 @@ export default function HomeScreen({ navigation }) {
       let playUrl = '';
 
       // Priority 1: Valid M3U8/HLS stream_url from API (Full-length VIP M3U8 stream)
-      if (rawStreamUrl.startsWith('http') || rawStreamUrl.startsWith('data:')) {
+      if (rawStreamUrl.startsWith('data:') || rawStreamUrl.includes('.m3u8')) {
         if (rawStreamUrl.startsWith('data:')) {
           try {
             const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;

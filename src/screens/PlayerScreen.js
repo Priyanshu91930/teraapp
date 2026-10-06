@@ -138,19 +138,20 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
       setHasFatalError(false);
     }
 
-    if (status === 'error') {
-      const errDetails = player && player.error ? (player.error.message || player.error.code || JSON.stringify(player.error)) : 'unknown';
-      console.log('[PLAYER] Transient error state encountered:', errDetails);
+    if (status === 'error' || status === 'loading') {
+      const errDetails = player && player.error ? (player.error.message || player.error.code || JSON.stringify(player.error)) : status;
+      console.log('[PLAYER] Player status:', status, '| info:', errDetails);
 
+      const timeoutMs = status === 'loading' ? 4000 : 2000;
       failoverTimer = setTimeout(() => {
         if (activeUrl !== fallbackUrl && fallbackUrl) {
-          console.log('[PLAYER] Confirmed error. Stream auto-switching to fallback URL:', fallbackUrl.substring(0, 80));
+          console.log('[PLAYER] Stream loading/error timeout expired. Auto-switching to fallback URL:', fallbackUrl.substring(0, 80));
           setActiveUrl(fallbackUrl);
-        } else {
+        } else if (status === 'error') {
           console.log('[PLAYER] Fatal playback error confirmed after grace period');
           setHasFatalError(true);
         }
-      }, 2000);
+      }, timeoutMs);
     } else {
       setHasFatalError(false);
     }
