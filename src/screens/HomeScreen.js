@@ -638,8 +638,30 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleWatchItem = (fileItem) => {
-    const proceed = () => {
-      const playUrl = fileItem.dlink || fileItem.download_url || fileItem.stream_url;
+    const proceed = async () => {
+      const rawStreamUrl = fileItem.stream_url || '';
+      let playUrl = '';
+
+      if (rawStreamUrl.startsWith('http') || rawStreamUrl.startsWith('data:')) {
+        if (rawStreamUrl.startsWith('data:')) {
+          try {
+            const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
+            const localM3u8Uri = FileSystem.cacheDirectory + 'playlist.m3u8';
+            await FileSystem.writeAsStringAsync(localM3u8Uri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+            console.log('[Watch Success] Created local HLS playlist:', localM3u8Uri);
+            playUrl = localM3u8Uri;
+          } catch (err) {
+            console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
+          }
+        } else {
+          playUrl = rawStreamUrl;
+        }
+      } else if (fileItem.dlink && fileItem.dlink.startsWith('http')) {
+        playUrl = fileItem.dlink;
+      } else if (fileItem.download_url && fileItem.download_url.startsWith('http')) {
+        playUrl = fileItem.download_url;
+      }
+
       if (!playUrl) {
         Alert.alert('Error', 'No playable stream URL found for this file.');
         return;
