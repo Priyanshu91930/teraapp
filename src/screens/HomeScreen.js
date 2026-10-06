@@ -637,10 +637,20 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
+  function getPlayableStreamUrl(rawUrl, fileName = 'video.mp4') {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('data:') || rawUrl.includes('.m3u8')) return rawUrl;
+    if (rawUrl.includes('download.php') || rawUrl.includes('teraboxdownloader.co.in')) return rawUrl;
+    const encodedUrl = encodeURIComponent(rawUrl);
+    const encodedName = encodeURIComponent(fileName || 'video.mp4');
+    return `https://teraboxdownloader.co.in/download.php?stream=1&filename=${encodedName}&url=${encodedUrl}`;
+  }
+
   const handleWatchItem = (fileItem) => {
     const proceed = async () => {
       const rawStreamUrl = fileItem.stream_url || '';
       let playUrl = '';
+      let secondaryFallbackUrl = '';
 
       if (rawStreamUrl.startsWith('data:') || rawStreamUrl.includes('.m3u8')) {
         if (rawStreamUrl.startsWith('data:')) {
@@ -656,10 +666,14 @@ export default function HomeScreen({ navigation }) {
         } else {
           playUrl = rawStreamUrl;
         }
-      } else if (fileItem.dlink && fileItem.dlink.startsWith('http')) {
-        playUrl = fileItem.dlink;
-      } else if (fileItem.download_url && fileItem.download_url.startsWith('http')) {
-        playUrl = fileItem.download_url;
+      }
+
+      if (!playUrl && fileItem.dlink && fileItem.dlink.startsWith('http')) {
+        playUrl = getPlayableStreamUrl(fileItem.dlink, fileItem.name);
+        secondaryFallbackUrl = fileItem.dlink;
+      } else if (!playUrl && fileItem.download_url && fileItem.download_url.startsWith('http')) {
+        playUrl = getPlayableStreamUrl(fileItem.download_url, fileItem.name);
+        secondaryFallbackUrl = fileItem.download_url;
       }
 
       if (!playUrl) {
@@ -837,15 +851,15 @@ export default function HomeScreen({ navigation }) {
           console.log('[Watch] Using full-length VIP M3U8 stream_url directly');
         }
       }
-      // Priority 2: Direct Full-Length CDN dlink fallback
+      // Priority 2: Direct Full-Length CDN dlink fallback via stream proxy
       else if (result.dlink && result.dlink.startsWith('http')) {
-        playUrl = result.dlink;
-        console.log('[Watch] Using full-length direct CDN dlink fallback');
+        playUrl = getPlayableStreamUrl(result.dlink, result.name);
+        console.log('[Watch] Using full-length direct CDN dlink via Hostinger proxy stream');
       }
-      // Priority 3: downloadUrl fallback
+      // Priority 3: downloadUrl fallback via stream proxy
       else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        playUrl = result.downloadUrl;
-        console.log('[Watch] Using full-length downloadUrl fallback');
+        playUrl = getPlayableStreamUrl(result.downloadUrl, result.name);
+        console.log('[Watch] Using full-length downloadUrl fallback via Hostinger proxy stream');
       }
 
       if (!playUrl) {
