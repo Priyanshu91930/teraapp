@@ -639,16 +639,7 @@ export default function HomeScreen({ navigation }) {
 
   const handleWatchItem = (fileItem) => {
     const proceed = () => {
-      const rawStreamUrl = fileItem.stream_url || '';
-      let playUrl = '';
-      if (rawStreamUrl.startsWith('http') && rawStreamUrl.includes('.m3u8')) {
-        playUrl = rawStreamUrl;
-      } else if (fileItem.dlink && fileItem.dlink.startsWith('http')) {
-        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(fileItem.dlink)}&stream=1`;
-      } else {
-        playUrl = fileItem.download_url || fileItem.dlink || rawStreamUrl;
-      }
-
+      const playUrl = fileItem.dlink || fileItem.download_url || fileItem.stream_url;
       if (!playUrl) {
         Alert.alert('Error', 'No playable stream URL found for this file.');
         return;
@@ -807,34 +798,32 @@ export default function HomeScreen({ navigation }) {
       const rawStreamUrl = result.stream_url || '';
       let playUrl = '';
 
-      // Priority 1: Valid stream_url from API
-      if (rawStreamUrl.startsWith('http')) {
-        playUrl = rawStreamUrl;
-        console.log('[Watch] Using stream_url directly');
-      }
-      // Priority 2: Base64 encoded M3U8 data
-      else if (rawStreamUrl.startsWith('data:')) {
-        try {
-          const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
-          const localM3u8Uri = FileSystem.cacheDirectory + 'playlist.m3u8';
-          await FileSystem.writeAsStringAsync(localM3u8Uri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
-          console.log('[Watch Success] Successfully created local HLS playlist:', localM3u8Uri);
-          playUrl = localM3u8Uri;
-        } catch (err) {
-          console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
+      // Priority 1: Valid M3U8/HLS stream_url from API (Full-length VIP M3U8 stream)
+      if (rawStreamUrl.startsWith('http') || rawStreamUrl.startsWith('data:')) {
+        if (rawStreamUrl.startsWith('data:')) {
+          try {
+            const base64Data = rawStreamUrl.includes(',') ? rawStreamUrl.split(',')[1] : rawStreamUrl;
+            const localM3u8Uri = FileSystem.cacheDirectory + 'playlist.m3u8';
+            await FileSystem.writeAsStringAsync(localM3u8Uri, base64Data, { encoding: FileSystem.EncodingType.Base64 });
+            console.log('[Watch Success] Created local HLS playlist:', localM3u8Uri);
+            playUrl = localM3u8Uri;
+          } catch (err) {
+            console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
+          }
+        } else {
+          playUrl = rawStreamUrl;
+          console.log('[Watch] Using full-length VIP M3U8 stream_url directly');
         }
       }
-      // Priority 3: Hostinger Ultra-Fast Streaming Proxy (download.php with stream mode)
+      // Priority 2: Direct Full-Length CDN dlink fallback
       else if (result.dlink && result.dlink.startsWith('http')) {
-        const hostingerProxyUrl = 'https://teraboxdownloader.co.in/download.php';
-        playUrl = `${hostingerProxyUrl}?url=${encodeURIComponent(result.dlink)}&stream=1`;
-        console.log('[Watch] Using Hostinger streaming proxy:', playUrl);
+        playUrl = result.dlink;
+        console.log('[Watch] Using full-length direct CDN dlink fallback');
       }
-      // Priority 4: downloadUrl fallback
+      // Priority 3: downloadUrl fallback
       else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        const hostingerProxyUrl = 'https://teraboxdownloader.co.in/download.php';
-        playUrl = `${hostingerProxyUrl}?url=${encodeURIComponent(result.downloadUrl)}&stream=1`;
-        console.log('[Watch] Fallback: Using Hostinger streaming proxy');
+        playUrl = result.downloadUrl;
+        console.log('[Watch] Using full-length downloadUrl fallback');
       }
 
       if (!playUrl) {
