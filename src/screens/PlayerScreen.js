@@ -49,22 +49,20 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
       url.includes('teraboxdownloader.co.in')
     );
 
-    const obj = { uri: url };
-
-    if (isHls) {
-      obj.contentType = 'hls';
-    } else if (isDirectCdn || (url && url.includes('.mp4'))) {
-      obj.contentType = 'progressive';
-    }
-
     const defaultHeaders = {
       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
       'Referer': 'https://www.terabox.com/',
     };
 
-    if (!isHls) {
-      obj.headers = { ...defaultHeaders, ...(headers || {}) };
+    const obj = { 
+      uri: url,
+      headers: { ...defaultHeaders, ...(headers || {}) },
+    };
+
+    if (isHls) {
+      obj.contentType = 'hls';
     }
+
     return obj;
   }, [url, headers]);
 
@@ -105,18 +103,16 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
       console.log('[Player] Replacing stream with fallback source:', activeUrl.substring(0, 80));
       const isHls = activeUrl.includes('.m3u8') || activeUrl.includes('mpegURL');
       const isDirectCdn = activeUrl.includes('freeterabox.com') || activeUrl.includes('1024terabox.com/file/') || activeUrl.includes('bkt=') || activeUrl.includes('fid=') || activeUrl.includes('download.php') || activeUrl.includes('teraboxdownloader.co.in');
-      const nextSource = { uri: activeUrl };
+      const defaultHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.terabox.com/',
+      };
+      const nextSource = {
+        uri: activeUrl,
+        headers: { ...defaultHeaders, ...(headers || {}) },
+      };
       if (isHls) {
         nextSource.contentType = 'hls';
-      } else if (isDirectCdn || activeUrl.includes('.mp4')) {
-        nextSource.contentType = 'progressive';
-      }
-      if (!isHls) {
-        const defaultHeaders = {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.terabox.com/',
-        };
-        nextSource.headers = { ...defaultHeaders, ...(headers || {}) };
       }
       try {
         if (player.replaceAsync) {

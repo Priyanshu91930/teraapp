@@ -87,8 +87,29 @@ export async function logoutUser() {
 
 export function checkIsPremium(user) {
   if (!user) return false;
-  if (user.isPremium === true) return true;
-  if (user.premiumStatus === 'premium') return true;
-  if (user.plan && user.plan.toLowerCase() !== 'free') return true;
+  if (user.role === 'admin') return true;
+
+  // 1. Expiry date check
+  if (user.premiumExpiresAt) {
+    const expiryDate = new Date(user.premiumExpiresAt);
+    if (!isNaN(expiryDate.getTime()) && expiryDate.getTime() <= Date.now()) {
+      return false;
+    }
+  }
+
+  // 2. Status checks
+  if (user.premiumStatus === 'expired' || user.premiumStatus === 'free') {
+    return false;
+  }
+
+  if (user.premiumStatus === 'premium') {
+    return true;
+  }
+
+  // 3. Fallback check for isPremium boolean flag (only if not expired)
+  if (user.isPremium === true) {
+    return true;
+  }
+
   return false;
 }

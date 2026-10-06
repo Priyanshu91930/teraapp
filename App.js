@@ -9,6 +9,7 @@ import { AppOpenAd, AdEventType } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from './src/services/adConfig';
 import { getStoredUser, checkIsPremium } from './src/services/authService';
 import { setupNotificationChannel, requestNotificationPermission, setupFirebaseRemoteNotifications } from './src/services/notificationManager';
+import { checkForAppUpdates } from './src/services/updateChecker';
 
 import HomeScreen from './src/screens/HomeScreen';
 import DownloadScreen from './src/screens/DownloadScreen';
@@ -137,6 +138,7 @@ export default function App() {
     };
 
     initNotifications();
+    checkForAppUpdates();
     loadAppOpenAd();
 
     return () => {

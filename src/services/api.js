@@ -24,6 +24,21 @@ export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip =
     'x-client-type': 'android_app',
     'x-client-source': 'app'
   };
+
+  try {
+    const { getStoredUser } = await import('./authService');
+    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
+    const user = await getStoredUser();
+    const token = await AsyncStorage.getItem('@teraapp_session_token');
+    if (user && user.email) {
+      headers['x-user-email'] = user.email;
+    }
+    if (token) {
+      headers['x-user-token'] = token;
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  } catch (e) {}
+
   if (isVip) {
     headers['x-user-tier'] = 'premium';
     headers['x-is-vip'] = 'true';

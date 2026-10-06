@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -238,6 +239,27 @@ export default function HomeScreen({ navigation }) {
       unsubscribeClosed();
     };
   }, [isPremiumUser]);
+  // Title subtle glow/pulse animation
+  const headerPulseAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(headerPulseAnim, {
+          toValue: 1.05,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(headerPulseAnim, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    animation.start();
+    return () => animation.stop();
+  }, []);
   const [downloadSpeed, setDownloadSpeed] = useState('0 KB/s');
   const [timeRemaining, setTimeRemaining] = useState('--');
   const [bytesWritten, setBytesWritten] = useState('0 MB');
@@ -327,7 +349,7 @@ export default function HomeScreen({ navigation }) {
         const timer = setTimeout(() => {
           console.warn('[HomeScreen] Ad timeout fallback triggered');
           safeExecute();
-        }, 8000);
+        }, 1500);
 
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
           AdEventType.CLOSED,
@@ -617,13 +639,25 @@ export default function HomeScreen({ navigation }) {
 
   const handleWatchItem = (fileItem) => {
     const proceed = () => {
-      const playUrl = fileItem.stream_url || fileItem.dlink || fileItem.download_url;
+      const rawStreamUrl = fileItem.stream_url || '';
+      let playUrl = '';
+      if (rawStreamUrl.startsWith('http') && rawStreamUrl.includes('.m3u8')) {
+        playUrl = rawStreamUrl;
+      } else if (fileItem.dlink && fileItem.dlink.startsWith('http')) {
+        playUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(fileItem.dlink)}&stream=1`;
+      } else {
+        playUrl = fileItem.download_url || fileItem.dlink || rawStreamUrl;
+      }
+
       if (!playUrl) {
         Alert.alert('Error', 'No playable stream URL found for this file.');
         return;
       }
-      const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
-      const headers = isProxyOrCdnUrl ? {} : (fileItem.downloadHeaders || {});
+      const defaultHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.terabox.com/',
+      };
+      const headers = { ...defaultHeaders, ...(fileItem.downloadHeaders || {}) };
       let secondaryFallbackUrl = '';
       if (playUrl !== fileItem.dlink && fileItem.dlink && fileItem.dlink.startsWith('http')) {
         secondaryFallbackUrl = fileItem.dlink;
@@ -773,7 +807,7 @@ export default function HomeScreen({ navigation }) {
       const rawStreamUrl = result.stream_url || '';
       let playUrl = '';
 
-      // Priority 1: Valid M3U8/HLS stream_url from API
+      // Priority 1: Valid stream_url from API
       if (rawStreamUrl.startsWith('http')) {
         playUrl = rawStreamUrl;
         console.log('[Watch] Using stream_url directly');
@@ -790,15 +824,17 @@ export default function HomeScreen({ navigation }) {
           console.error('[Watch Error] Failed to write local M3U8 file:', err.message);
         }
       }
-      // Priority 3: Direct dlink from API
+      // Priority 3: Hostinger Ultra-Fast Streaming Proxy (download.php with stream mode)
       else if (result.dlink && result.dlink.startsWith('http')) {
-        playUrl = result.dlink;
-        console.log('[Watch] Using dlink directly from API');
+        const hostingerProxyUrl = 'https://teraboxdownloader.co.in/download.php';
+        playUrl = `${hostingerProxyUrl}?url=${encodeURIComponent(result.dlink)}&stream=1`;
+        console.log('[Watch] Using Hostinger streaming proxy:', playUrl);
       }
       // Priority 4: downloadUrl fallback
       else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        playUrl = result.downloadUrl;
-        console.log('[Watch] Fallback: Using downloadUrl directly from API');
+        const hostingerProxyUrl = 'https://teraboxdownloader.co.in/download.php';
+        playUrl = `${hostingerProxyUrl}?url=${encodeURIComponent(result.downloadUrl)}&stream=1`;
+        console.log('[Watch] Fallback: Using Hostinger streaming proxy');
       }
 
       if (!playUrl) {
@@ -809,9 +845,11 @@ export default function HomeScreen({ navigation }) {
 
       console.log('[Watch Success] Selected playUrl:', playUrl);
 
-      // Do NOT pass downloadHeaders when playing through proxy (download.php) or direct TeraBox CDN (d8.freeterabox.com).
-      const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
-      const headers = isProxyOrCdnUrl ? {} : (result.downloadHeaders || {});
+      const defaultHeaders = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://www.terabox.com/',
+      };
+      const headers = { ...defaultHeaders, ...(result.downloadHeaders || {}) };
       let secondaryFallbackUrl = '';
       if (playUrl !== result.dlink && result.dlink && result.dlink.startsWith('http')) {
         secondaryFallbackUrl = result.dlink;
@@ -899,7 +937,9 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
         </TouchableOpacity>
-        <Text style={styles.topBarTitle}>Terabox Downloader</Text>
+        <Animated.View style={{ transform: [{ scale: headerPulseAnim }] }}>
+          <Text style={styles.topBarTitle}>Terabox Downloader</Text>
+        </Animated.View>
         <View style={styles.headerRightActions}>
           {!isPremiumUser && (
             <TouchableOpacity
@@ -1004,47 +1044,58 @@ export default function HomeScreen({ navigation }) {
             </View>
           )}
 
-          {/* Supported Domains collapsible section */}
-          <View style={styles.mirrorsCard}>
-            <TouchableOpacity 
-              style={styles.mirrorsHeader} 
-              onPress={() => setShowMirrors(!showMirrors)}
-              activeOpacity={0.7}
-            >
-              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                <Ionicons name="checkmark-circle-outline" size={18} color="#10B981" style={{ marginRight: 6 }} />
-                <Text style={styles.mirrorsTitle}>Supported TeraBox Formats</Text>
+          {/* Supported Formats section */}
+          <View style={styles.formatsCard}>
+            <Text style={styles.formatsTitle}>Supported Formats</Text>
+            <View style={styles.formatsGrid}>
+              {/* Video */}
+              <View style={styles.formatItem}>
+                <LinearGradient
+                  colors={['#FF5252', '#FF1744']}
+                  style={styles.formatIconWrap}
+                >
+                  <Ionicons name="play" size={24} color="#FFFFFF" />
+                </LinearGradient>
+                <Text style={styles.formatName}>Video</Text>
+                <Text style={styles.formatExt}>(MP4, MKV)</Text>
               </View>
-              <Ionicons 
-                name={showMirrors ? "chevron-up" : "chevron-down"} 
-                size={18} 
-                color="#64748B" 
-              />
-            </TouchableOpacity>
 
-            {showMirrors && (
-              <View style={styles.mirrorsGrid}>
-                {[
-                  'terabox.com',
-                  '1024tera.com',
-                  'teraboxapp.com',
-                  'mirrobox.com',
-                  'nephobox.com',
-                  '4funbox.co',
-                  'freeterabox.com',
-                  'tibibox.com',
-                  'momerybox.com'
-                ].map((domain) => (
-                  <View key={domain} style={styles.mirrorItem}>
-                    <Ionicons name="checkmark" size={14} color="#10B981" />
-                    <Text style={styles.mirrorText} numberOfLines={1}>{domain}</Text>
-                  </View>
-                ))}
-                <Text style={styles.mirrorsSubtext}>
-                  ✓ Works with all official domains and regional mirror sites.
-                </Text>
+              {/* Audio */}
+              <View style={styles.formatItem}>
+                <LinearGradient
+                  colors={['#FFB300', '#FF8F00']}
+                  style={styles.formatIconWrap}
+                >
+                  <Ionicons name="musical-notes" size={24} color="#FFFFFF" />
+                </LinearGradient>
+                <Text style={styles.formatName}>Audio</Text>
+                <Text style={styles.formatExt}>(MP3, M4A)</Text>
               </View>
-            )}
+
+              {/* Photos */}
+              <View style={styles.formatItem}>
+                <LinearGradient
+                  colors={['#29B6F6', '#0288D1']}
+                  style={styles.formatIconWrap}
+                >
+                  <Ionicons name="images" size={24} color="#FFFFFF" />
+                </LinearGradient>
+                <Text style={styles.formatName}>Photos</Text>
+                <Text style={styles.formatExt}>(JPG, PNG)</Text>
+              </View>
+
+              {/* Documents */}
+              <View style={styles.formatItem}>
+                <LinearGradient
+                  colors={['#7C4DFF', '#651FFF']}
+                  style={styles.formatIconWrap}
+                >
+                  <Ionicons name="document-text" size={24} color="#FFFFFF" />
+                </LinearGradient>
+                <Text style={styles.formatName}>Documents</Text>
+                <Text style={styles.formatExt}>(PDF, DOC)</Text>
+              </View>
+            </View>
           </View>
 
           {/* Error Message */}
@@ -1864,60 +1915,60 @@ const styles = StyleSheet.create({
     borderTopColor: '#E2E8F0',
     paddingVertical: 4,
   },
-  mirrorsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: radius.md,
+  formatsCard: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 20,
     padding: spacing.md,
-    marginTop: spacing.md,
+    marginTop: spacing.sm,
     marginBottom: spacing.md,
     borderWidth: 1,
-    borderColor: '#E2E8F0',
+    borderColor: 'rgba(255, 255, 255, 0.8)',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.04,
+    shadowRadius: 10,
     elevation: 2,
   },
-  mirrorsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  mirrorsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
+  formatsTitle: {
+    fontSize: 16,
+    fontWeight: '800',
     color: '#0F172A',
+    marginBottom: 14,
+    letterSpacing: 0.2,
   },
-  mirrorsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-    marginTop: spacing.md,
-  },
-  mirrorItem: {
-    width: '48%',
+  formatsGrid: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#F8FAFC',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  formatItem: {
+    flex: 1,
+    alignItems: 'center',
+  },
+  formatIconWrap: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
   },
-  mirrorText: {
-    fontSize: 11,
-    color: '#334155',
-    marginLeft: 6,
+  formatName: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#1E293B',
+    textAlign: 'center',
+  },
+  formatExt: {
+    fontSize: 10,
     fontWeight: '500',
-  },
-  mirrorsSubtext: {
-    fontSize: 11,
-    color: '#10B981',
-    fontWeight: '600',
-    marginTop: 6,
-    width: '100%',
+    color: '#94A3B8',
+    marginTop: 2,
     textAlign: 'center',
   },
   folderHeaderRow: {
