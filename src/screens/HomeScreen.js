@@ -196,6 +196,7 @@ export default function HomeScreen({ navigation }) {
   const [playerVisible, setPlayerVisible] = useState(false);
   const [playerSource, setPlayerSource] = useState(null); // { url, headers }
   const [playerName, setPlayerName] = useState(null);
+  const [isResultFolderExpanded, setIsResultFolderExpanded] = useState(true);
 
   // Reference for rewarded interstitial
   const rewardedInterstitialRef = useRef(null);
@@ -637,12 +638,38 @@ export default function HomeScreen({ navigation }) {
     }
   };
 
-  function getPlayableStreamUrl(rawUrl, fileName = 'video.mp4') {
-    if (!rawUrl) return '';
-    if (rawUrl.startsWith('data:') || rawUrl.includes('.m3u8')) return rawUrl;
-    if (rawUrl.includes('terabox-stream.solankipriyanshu94.workers.dev')) return rawUrl;
-    const encodedUrl = encodeURIComponent(rawUrl);
-    return `https://terabox-stream.solankipriyanshu94.workers.dev/?url=${encodedUrl}`;
+  function getSmartStreamConfig(dlink, downloadHeaders = {}, name = 'video.mp4') {
+    if (!dlink || !dlink.startsWith('http')) {
+      return { playUrl: '', fallbackUrl: '', headers: {} };
+    }
+
+    const lower = dlink.toLowerCase();
+    const is1024Restricted = lower.includes('1024terabox') || lower.includes('1024tera') || lower.includes('-ddata') || lower.includes('ddata.') || lower.includes('1024');
+
+    const defaultHeaders = {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Referer': is1024Restricted ? 'https://www.1024terabox.com/' : 'https://www.terabox.com/',
+    };
+    const headers = { ...defaultHeaders, ...downloadHeaders, Referer: defaultHeaders.Referer };
+
+    if (is1024Restricted) {
+      // Restricted 1024/kul-ddata nodes MUST be played directly by native app (Cloudflare Worker gets 403 sign error)
+      const encoded = encodeURIComponent(dlink);
+      const hostingerFallback = `https://teraboxdownloader.co.in/download.php?url=${encoded}&stream=1&filename=${encodeURIComponent(name)}`;
+      return {
+        playUrl: dlink,
+        fallbackUrl: hostingerFallback,
+        headers
+      };
+    } else {
+      // Open CDN nodes (d8.freeterabox.com, d3.terabox.app) play best via Cloudflare Worker (1s instant start)
+      const workerUrl = `https://terabox-stream.solankipriyanshu94.workers.dev/?url=${encodeURIComponent(dlink)}`;
+      return {
+        playUrl: workerUrl,
+        fallbackUrl: dlink,
+        headers
+      };
+    }
   }
 
   const handleWatchItem = (fileItem) => {
@@ -650,6 +677,7 @@ export default function HomeScreen({ navigation }) {
       const rawStreamUrl = fileItem.stream_url || '';
       let playUrl = '';
       let secondaryFallbackUrl = '';
+      let playHeaders = {};
 
       if (rawStreamUrl.startsWith('data:') || rawStreamUrl.includes('.m3u8')) {
         if (rawStreamUrl.startsWith('data:')) {
@@ -667,28 +695,20 @@ export default function HomeScreen({ navigation }) {
         }
       }
 
-      if (!playUrl && fileItem.dlink && fileItem.dlink.startsWith('http')) {
-        playUrl = getPlayableStreamUrl(fileItem.dlink, fileItem.name);
-        secondaryFallbackUrl = fileItem.dlink;
-      } else if (!playUrl && fileItem.download_url && fileItem.download_url.startsWith('http')) {
-        playUrl = getPlayableStreamUrl(fileItem.download_url, fileItem.name);
-        secondaryFallbackUrl = fileItem.download_url;
+      if (!playUrl) {
+        const rawDl = fileItem.dlink || fileItem.download_url || '';
+        const cfg = getSmartStreamConfig(rawDl, fileItem.downloadHeaders || {}, fileItem.name || 'video.mp4');
+        playUrl = cfg.playUrl;
+        secondaryFallbackUrl = cfg.fallbackUrl;
+        playHeaders = cfg.headers;
       }
 
       if (!playUrl) {
         Alert.alert('Error', 'No playable stream URL found for this file.');
         return;
       }
-      const defaultHeaders = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.terabox.com/',
-      };
-      const headers = { ...defaultHeaders, ...(fileItem.downloadHeaders || {}) };
-      if (!secondaryFallbackUrl && playUrl !== fileItem.dlink && fileItem.dlink && fileItem.dlink.startsWith('http')) {
-        secondaryFallbackUrl = fileItem.dlink;
-      }
 
-      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers });
+      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers: playHeaders });
       setPlayerName(fileItem.name || 'Video');
       setPlayerVisible(true);
     };
@@ -825,12 +845,28 @@ export default function HomeScreen({ navigation }) {
       }
 
       console.log('=== [WATCH PRESSED] ===');
-      console.log('[Watch Debug] result.stream_url:', result.stream_url ? result.stream_url.substring(0, 80) + '...' : 'EMPTY');
-      console.log('[Watch Debug] result.downloadUrl:', result.downloadUrl ? result.downloadUrl.substring(0, 80) + '...' : 'EMPTY');
-      console.log('[Watch Debug] result.dlink:', result.dlink ? result.dlink.substring(0, 80) + '...' : 'EMPTY');
 
-      const rawStreamUrl = result.stream_url || '';
+      let currentResult = result;
+      const shareUrl = result.shareUrl || input.trim();
+      if (shareUrl && s && s.apiBaseUrl) {
+        try {
+          console.log('[Watch] Auto re-resolving fresh signature link for instant playback...');
+          const freshData = await resolveTeraboxLink(s.apiBaseUrl, shareUrl, s.downloadQuality, isPremiumUser);
+          if (freshData && (freshData.dlink || freshData.downloadUrl)) {
+            currentResult = freshData;
+          }
+        } catch (rErr) {
+          console.log('[Watch] Re-resolve warning, using cached link:', rErr.message);
+        }
+      }
+
+      console.log('[Watch Debug] currentResult.stream_url:', currentResult.stream_url ? currentResult.stream_url.substring(0, 80) + '...' : 'EMPTY');
+      console.log('[Watch Debug] currentResult.dlink:', currentResult.dlink ? currentResult.dlink.substring(0, 80) + '...' : 'EMPTY');
+
+      const rawStreamUrl = currentResult.stream_url || '';
       let playUrl = '';
+      let secondaryFallbackUrl = '';
+      let playHeaders = {};
 
       // Priority 1: Valid M3U8/HLS stream_url from API (Full-length VIP M3U8 stream)
       if (rawStreamUrl.startsWith('data:') || rawStreamUrl.includes('.m3u8')) {
@@ -849,15 +885,13 @@ export default function HomeScreen({ navigation }) {
           console.log('[Watch] Using full-length VIP M3U8 stream_url directly');
         }
       }
-      // Priority 2: Direct Full-Length CDN dlink fallback via stream proxy
-      else if (result.dlink && result.dlink.startsWith('http')) {
-        playUrl = getPlayableStreamUrl(result.dlink, result.name);
-        console.log('[Watch] Using full-length direct CDN dlink via Hostinger proxy stream');
-      }
-      // Priority 3: downloadUrl fallback via stream proxy
-      else if (result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        playUrl = getPlayableStreamUrl(result.downloadUrl, result.name);
-        console.log('[Watch] Using full-length downloadUrl fallback via Hostinger proxy stream');
+
+      if (!playUrl) {
+        const rawDl = currentResult.dlink || currentResult.downloadUrl || '';
+        const cfg = getSmartStreamConfig(rawDl, currentResult.downloadHeaders || {}, currentResult.name || 'video.mp4');
+        playUrl = cfg.playUrl;
+        secondaryFallbackUrl = cfg.fallbackUrl;
+        playHeaders = cfg.headers;
       }
 
       if (!playUrl) {
@@ -866,22 +900,10 @@ export default function HomeScreen({ navigation }) {
         return;
       }
 
-      console.log('[Watch Success] Selected playUrl:', playUrl);
+      console.log('[Watch Success] Selected playUrl:', playUrl.substring(0, 90));
 
-      const defaultHeaders = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://www.terabox.com/',
-      };
-      const headers = { ...defaultHeaders, ...(result.downloadHeaders || {}) };
-      let secondaryFallbackUrl = '';
-      if (playUrl !== result.dlink && result.dlink && result.dlink.startsWith('http')) {
-        secondaryFallbackUrl = result.dlink;
-      } else if (playUrl !== result.downloadUrl && result.downloadUrl && result.downloadUrl.startsWith('http')) {
-        secondaryFallbackUrl = result.downloadUrl;
-      }
-
-      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers });
-      setPlayerName(result.name || 'Video');
+      setPlayerSource({ url: playUrl, fallbackUrl: secondaryFallbackUrl, headers: playHeaders });
+      setPlayerName(currentResult.name || 'Video');
       setPlayerVisible(true);
     }
 
@@ -1128,7 +1150,11 @@ export default function HomeScreen({ navigation }) {
           {result && !parsing ? (
             result.isFolder && Array.isArray(result.files) ? (
               <View style={styles.resultCard}>
-                <View style={styles.folderHeaderRow}>
+                <TouchableOpacity
+                  style={styles.folderHeaderRow}
+                  activeOpacity={0.7}
+                  onPress={() => setIsResultFolderExpanded(!isResultFolderExpanded)}
+                >
                   <View style={styles.folderIconBadge}>
                     <Ionicons name="folder-open" size={24} color="#3B82F6" />
                   </View>
@@ -1148,15 +1174,22 @@ export default function HomeScreen({ navigation }) {
                     <Ionicons name="cloud-download" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
                     <Text style={styles.downloadAllBtnText}>Download All</Text>
                   </TouchableOpacity>
-                </View>
+                  <Ionicons
+                    name={isResultFolderExpanded ? 'chevron-up' : 'chevron-down'}
+                    size={22}
+                    color="#6B7280"
+                    style={{ marginLeft: 8 }}
+                  />
+                </TouchableOpacity>
 
-                <View style={styles.folderDivider} />
-
-                <View style={styles.folderFilesContainer}>
-                  {result.files.map((file, idx) => {
-                    const isVideo = file.stream_url || (file.name && /\.(mp4|mkv|avi|mov|webm|flv|3gp)$/i.test(file.name));
-                    return (
-                      <View key={idx} style={styles.folderFileItem}>
+                {isResultFolderExpanded && (
+                  <>
+                    <View style={styles.folderDivider} />
+                    <View style={styles.folderFilesContainer}>
+                      {result.files.map((file, idx) => {
+                        const isVideo = file.stream_url || (file.name && /\.(mp4|mkv|avi|mov|webm|flv|3gp)$/i.test(file.name));
+                        return (
+                          <View key={idx} style={styles.folderFileItem}>
                         {file.thumbnail ? (
                           <Image source={{ uri: file.thumbnail }} style={styles.folderThumbImg} />
                         ) : (
@@ -1193,7 +1226,9 @@ export default function HomeScreen({ navigation }) {
                     );
                   })}
                 </View>
-              </View>
+              </>
+            )}
+          </View>
             ) : (
               <View style={styles.resultCard}>
                 <View style={styles.resultHeader}>

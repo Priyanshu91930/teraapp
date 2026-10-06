@@ -138,9 +138,28 @@ export default function HistoryScreen({ navigation }) {
         const playUrl = resObj.stream_url || resObj.dlink || resObj.downloadUrl || data.downloadUrl || '';
 
         if (playUrl) {
-          const isProxyOrCdnUrl = playUrl.includes('download.php') || playUrl.includes('freeterabox.com') || playUrl.includes('1024terabox.com/file/') || playUrl.includes('bkt=');
-          const headers = isProxyOrCdnUrl ? {} : (resObj.downloadHeaders || data.downloadHeaders || {});
-          setPlayerSource({ url: playUrl, headers });
+          const lowerPlay = (playUrl || '').toLowerCase();
+          const is1024Restricted = lowerPlay.includes('1024terabox') || lowerPlay.includes('1024tera') || lowerPlay.includes('-ddata') || lowerPlay.includes('ddata.') || lowerPlay.includes('1024');
+          const defaultHeaders = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': is1024Restricted ? 'https://www.1024terabox.com/' : 'https://www.terabox.com/',
+          };
+          const headers = { ...defaultHeaders, ...(resObj.downloadHeaders || data.downloadHeaders || {}) };
+
+          let targetUrl = playUrl;
+          let fallbackUrl = '';
+
+          if (!playUrl.includes('.m3u8') && !playUrl.startsWith('data:')) {
+            if (is1024Restricted) {
+              targetUrl = playUrl;
+              fallbackUrl = `https://teraboxdownloader.co.in/download.php?url=${encodeURIComponent(playUrl)}&stream=1&filename=${encodeURIComponent(item.name || 'video.mp4')}`;
+            } else {
+              targetUrl = `https://terabox-stream.solankipriyanshu94.workers.dev/?url=${encodeURIComponent(playUrl)}`;
+              fallbackUrl = playUrl;
+            }
+          }
+
+          setPlayerSource({ url: targetUrl, fallbackUrl, headers });
           setPlayerName(item.name || 'Video');
           setPlayerVisible(true);
         } else {

@@ -42,6 +42,16 @@ export default function DownloadScreen() {
   const [playerSource, setPlayerSource] = useState(null);
   const [playerName, setPlayerName] = useState('');
 
+  // Folder dropdown collapse state
+  const [collapsedFolders, setCollapsedFolders] = useState({});
+
+  const toggleFolderCollapse = (folderName) => {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [folderName]: !prev[folderName],
+    }));
+  };
+
   const isPremiumUser = checkIsPremium(user);
 
   useFocusEffect(
@@ -446,9 +456,14 @@ export default function DownloadScreen() {
 
   function renderGroupItem({ item: group }) {
     if (group.isFolderGroup) {
+      const isCollapsed = Boolean(collapsedFolders[group.folderName]);
       return (
         <View style={styles.folderGroupCard}>
-          <View style={styles.folderGroupHeader}>
+          <TouchableOpacity
+            style={styles.folderGroupHeader}
+            activeOpacity={0.7}
+            onPress={() => toggleFolderCollapse(group.folderName)}
+          >
             <View style={styles.folderIconBadge}>
               <Ionicons name="folder-open" size={20} color="#3B82F6" />
             </View>
@@ -460,13 +475,22 @@ export default function DownloadScreen() {
                 {group.items.length} file{group.items.length > 1 ? 's' : ''} ready in folder
               </Text>
             </View>
-          </View>
+            <Ionicons
+              name={isCollapsed ? 'chevron-down' : 'chevron-up'}
+              size={22}
+              color="#6B7280"
+              style={{ marginLeft: 8 }}
+            />
+          </TouchableOpacity>
 
-          <View style={styles.folderDivider} />
-
-          <View style={styles.folderItemsContainer}>
-            {group.items.map((fileItem) => renderSingleFileCard(fileItem, true))}
-          </View>
+          {!isCollapsed && (
+            <>
+              <View style={styles.folderDivider} />
+              <View style={styles.folderItemsContainer}>
+                {group.items.map((fileItem) => renderSingleFileCard(fileItem, true))}
+              </View>
+            </>
+          )}
         </View>
       );
     }

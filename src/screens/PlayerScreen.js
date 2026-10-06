@@ -128,30 +128,37 @@ function InnerPlayer({ url, fallbackUrl, name, headers, onClose, isPremium }) {
 
   const [hasFatalError, setHasFatalError] = useState(false);
 
-  // Handle status changes and trigger auto-failover ONLY after grace period
+  // Handle status changes and trigger auto-failover ONLY on actual player error
   useEffect(() => {
     let failoverTimer;
-    console.log('[PLAYER] statusChange:', status, '| dur:', player ? player.duration : 0);
+    const currentDur = player ? player.duration : 0;
+    console.log('[PLAYER] statusChange:', status, '| dur:', currentDur);
 
-    if (status === 'readyToPlay' && player && player.duration > 0) {
-      setDuration(player.duration);
+    if (status === 'readyToPlay' || currentDur > 0) {
+      if (currentDur > 0) {
+        setDuration(currentDur);
+      }
       setHasFatalError(false);
+      return;
     }
 
-    if (status === 'error' || status === 'loading') {
+    if (status === 'error') {
       const errDetails = player && player.error ? (player.error.message || player.error.code || JSON.stringify(player.error)) : status;
-      console.log('[PLAYER] Player status:', status, '| info:', errDetails);
+      console.log('[PLAYER] Playback error state:', status, '| info:', errDetails);
 
-      const timeoutMs = status === 'loading' ? 4000 : 2000;
       failoverTimer = setTimeout(() => {
-        if (activeUrl !== fallbackUrl && fallbackUrl) {
-          console.log('[PLAYER] Stream loading/error timeout expired. Auto-switching to fallback URL:', fallbackUrl.substring(0, 80));
-          setActiveUrl(fallbackUrl);
-        } else if (status === 'error') {
+        const proxiedFallback = fallbackUrl ? ((fallbackUrl.includes('workers.dev') || fallbackUrl.startsWith('data:') || fallbackUrl.includes('.m3u8'))
+          ? fallbackUrl
+          : `https://terabox-stream.solankipriyanshu94.workers.dev/?url=${encodeURIComponent(fallbackUrl)}`) : '';
+
+        if (fallbackUrl && proxiedFallback && proxiedFallback !== activeUrl && activeUrl !== fallbackUrl && status !== 'readyToPlay') {
+          console.log('[PLAYER] Auto-switching to fallback URL due to player error:', proxiedFallback.substring(0, 80));
+          setActiveUrl(proxiedFallback);
+        } else {
           console.log('[PLAYER] Fatal playback error confirmed after grace period');
           setHasFatalError(true);
         }
-      }, timeoutMs);
+      }, 2000);
     } else {
       setHasFatalError(false);
     }
