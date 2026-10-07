@@ -16,6 +16,8 @@ import {
   fetchProducts,
   requestPurchase,
   finishTransaction,
+  getAvailablePurchases,
+  flushFailedPurchasesCachedAsPendingAndroid,
   purchaseUpdatedListener,
   purchaseErrorListener,
 } from 'expo-iap';
@@ -74,7 +76,10 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
           const receipt = purchase?.transactionReceipt || purchase?.purchaseToken;
           if (receipt) {
             await verifyAndActivatePurchase(receipt, purchase.productId);
-            await finishTransaction({ purchase, isConsumable: false }).catch(() => {});
+            // ALWAYS consume in-app purchase token on Google Play Store so user can re-purchase when plan expires!
+            await finishTransaction({ purchase, isConsumable: true }).catch((err) => {
+              console.log('[IAP finishTransaction warning]:', err?.message);
+            });
           }
         });
 
@@ -94,6 +99,24 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         }
 
         if (result && isMounted) {
+          // Clear any stuck unconsumed purchases from Google Play Store so user is never blocked by E_ALREADY_OWNED
+          try {
+            if (typeof flushFailedPurchasesCachedAsPendingAndroid === 'function') {
+              await flushFailedPurchasesCachedAsPendingAndroid().catch(() => {});
+            }
+            if (typeof getAvailablePurchases === 'function') {
+              const available = await getAvailablePurchases().catch(() => []);
+              if (Array.isArray(available) && available.length > 0) {
+                console.log('[IAP Cleanup] Clearing stuck unconsumed purchases from Google Play:', available.length);
+                for (const p of available) {
+                  await finishTransaction({ purchase: p, isConsumable: true }).catch(() => {});
+                }
+              }
+            }
+          } catch (cleanErr) {
+            console.log('[IAP Cleanup Warning]:', cleanErr?.message);
+          }
+
           console.log('[IAP Init] Querying Play Store Products:', SKUS);
           const prods = await fetchProducts({ skus: SKUS, type: 'in-app' }).catch((err) => {
             console.log('[IAP Init Warning] fetchProducts failed:', err?.message || err);
@@ -132,7 +155,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       console.log('[IAP Verification] Sending token to backend server...', {
         email: user?.email,
         productId,
-        purchaseToken,
+        purchaseToken: purchaseToken ? purchaseToken.substring(0, 20) + '...' : '',
         activePlan,
       });
       const res = await fetch(`${API_BASE_URL}/api/payment/verify-play-purchase`, {
@@ -152,17 +175,24 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       if (data && data.success) {
         Alert.alert(
           '🎉 VIP Premium Activated!',
-          `Thank you for upgrading! Your ${selectedPlan.toUpperCase()} plan is now active on Mobile App, Web & Telegram Bot.`
+          `Thank you for upgrading! Your ${activePlan.toUpperCase()} plan is now active on Mobile App, Web & Telegram Bot.`
         );
         if (onPaymentSuccess) onPaymentSuccess(user?.email);
         if (onClose) onClose();
+        return true;
       } else {
-        Alert.alert('Activation Error', data?.error || 'Failed to activate plan on server.');
+        if (data?.error && data.error.includes('already been redeemed')) {
+          console.log('[IAP Verification] Token was already redeemed previously.');
+        } else {
+          Alert.alert('Activation Error', data?.error || 'Failed to activate plan on server.');
+        }
+        return false;
       }
     } catch (e) {
       setLoading(false);
       console.log('[IAP Verification Exception]:', e?.message || e);
       Alert.alert('Activation Error', 'Network error during plan activation.');
+      return false;
     }
   }
 
@@ -199,10 +229,31 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         setLoading(false);
         console.log('[IAP Action Error] requestPurchase Exception:', JSON.stringify(reqErr || {}));
         const code = reqErr?.code || '';
-        if (code !== 'E_USER_CANCELLED' && code !== 'user-cancelled' && code !== 'UserCancelled') {
+        const msg = reqErr?.message || reqErr?.debugMessage || '';
+
+        if (code === 'E_ALREADY_OWNED' || msg.toLowerCase().includes('already own')) {
+          console.log('[IAP Action] Item already owned on Play Store. Clearing stuck purchase lock...');
+          try {
+            if (typeof getAvailablePurchases === 'function') {
+              const available = await getAvailablePurchases().catch(() => []);
+              if (Array.isArray(available) && available.length > 0) {
+                for (const p of available) {
+                  await finishTransaction({ purchase: p, isConsumable: true }).catch(() => {});
+                }
+              }
+            }
+          } catch (e) {
+            // ignore
+          }
+          Alert.alert(
+            'Google Play Lock Reset',
+            'Your previous Google Play purchase session has been cleared. Please tap "Pay Securely" again now to proceed with your new payment.',
+            [{ text: 'OK' }]
+          );
+        } else if (code !== 'E_USER_CANCELLED' && code !== 'user-cancelled' && code !== 'UserCancelled') {
           Alert.alert(
             'Google Play Store Billing',
-            reqErr?.message || reqErr?.debugMessage || 'Payment cancelled or unavailable.'
+            msg || 'Payment cancelled or unavailable.'
           );
         }
       }

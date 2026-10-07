@@ -34,7 +34,7 @@ export async function syncGoogleUser(email, name = '', avatar = '', googleId = '
       console.log(`[AuthSync Debug] Syncing user ${email} (Attempt ${attempt}/${MAX_RETRIES})...`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12s timeout
+      const timeoutId = setTimeout(() => controller.abort(), 25000); // 25s timeout for serverless cold starts
 
       const response = await fetch(`${API_BASE_URL}/api/auth/google-sync`, {
         method: 'POST',
