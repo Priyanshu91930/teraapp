@@ -60,10 +60,14 @@ export async function syncGoogleUser(email, name = '', avatar = '', googleId = '
         lastError = data.error || 'Server rejected user sync';
       }
     } catch (e) {
-      console.error(`[AuthSync Debug] Attempt ${attempt} failed:`, e.message);
+      if (e.name === 'AbortError' || e.message?.includes('canceled')) {
+        console.log(`[AuthSync Debug] Attempt ${attempt} cancelled during screen transition.`);
+      } else {
+        console.log(`[AuthSync Debug] Attempt ${attempt} info:`, e.message);
+      }
       lastError = e.message || 'Network fetch failed';
       if (attempt < MAX_RETRIES) {
-        await new Promise((res) => setTimeout(res, 1000)); // wait 1s before retry
+        await new Promise((res) => setTimeout(res, 800)); // wait 800ms before retry
       }
     }
   }
