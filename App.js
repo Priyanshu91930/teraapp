@@ -138,10 +138,13 @@ export default function App() {
     };
 
     initNotifications();
-    checkForAppUpdates();
-    loadAppOpenAd();
+    const timer = setTimeout(() => {
+      checkForAppUpdates();
+      loadAppOpenAd();
+    }, 1200);
 
     return () => {
+      clearTimeout(timer);
       if (unsubLoaded) unsubLoaded();
       if (unsubError) unsubError();
     };
