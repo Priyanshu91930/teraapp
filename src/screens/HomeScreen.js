@@ -141,11 +141,17 @@ function FileDownloadButton({ file, onDownloadClick, onOpenClick }) {
   );
 }
 
-export default function HomeScreen({ navigation }) {
+export default function HomeScreen({ navigation, route }) {
   const insets = useSafeAreaInsets();
   const isFocused = useIsFocused();
   const [settings, setSettings] = useState(null);
   const [input, setInput] = useState('');
+
+  useEffect(() => {
+    if (route?.params?.url) {
+      setInput(route.params.url);
+    }
+  }, [route?.params?.url]);
   const [parsing, setParsing] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [error, setError] = useState('');
@@ -967,7 +973,7 @@ export default function HomeScreen({ navigation }) {
       />
 
       {/* Royal Blue Top Header Bar */}
-      <View style={[styles.topBar, { paddingTop: insets.top + 8, height: 62 + insets.top }]}>
+      <View style={[styles.topBar, { paddingTop: insets.top + 6, height: 60 + insets.top }]}>
         <TouchableOpacity activeOpacity={0.7} style={styles.headerProfileBtn} onPress={() => navigation.navigate('Settings')}>
           {user && user.avatar ? (
             <Image source={{ uri: user.avatar }} style={styles.headerAvatarImg} />

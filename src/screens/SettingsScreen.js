@@ -13,9 +13,10 @@ import {
   Easing,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import { GoogleSignin, statusCodes } from '@react-native-google-signin/google-signin';
 import { getStoredUser, checkIsPremium, syncGoogleUser, logoutUser } from '../services/authService';
 import SubscriptionModal from '../components/SubscriptionModal';
@@ -77,76 +78,12 @@ export function getExpiryDetails(user) {
 }
 
 function AnimatedExpiryHeaderBadge({ expiryDetails }) {
-  const pulseAnim = React.useRef(new Animated.Value(1)).current;
-  const fadeAnim = React.useRef(new Animated.Value(1)).current;
-  const translateY = React.useRef(new Animated.Value(0)).current;
-  const [activeSlide, setActiveSlide] = React.useState(0);
-
-  React.useEffect(() => {
-    const pulseLoop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.05,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1200,
-          easing: Easing.inOut(Easing.ease),
-          useNativeDriver: true,
-        }),
-      ])
-    );
-    pulseLoop.start();
-
-    const interval = setInterval(() => {
-      Animated.sequence([
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 0, duration: 250, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: -6, duration: 250, useNativeDriver: true }),
-        ]),
-        Animated.timing(translateY, { toValue: 6, duration: 0, useNativeDriver: true }),
-      ]).start(() => {
-        setActiveSlide((prev) => (prev + 1) % 2);
-        Animated.parallel([
-          Animated.timing(fadeAnim, { toValue: 1, duration: 250, useNativeDriver: true }),
-          Animated.timing(translateY, { toValue: 0, duration: 250, useNativeDriver: true }),
-        ]).start();
-      });
-    }, 3000);
-
-    return () => {
-      pulseLoop.stop();
-      clearInterval(interval);
-    };
-  }, [pulseAnim, fadeAnim, translateY]);
-
   if (!expiryDetails.isPremium) return null;
-
   return (
-    <Animated.View style={{ transform: [{ scale: pulseAnim }], marginTop: 6, alignItems: 'center' }}>
-      <LinearGradient
-        colors={['#10B981', '#059669']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.expiryHeaderPill}
-      >
-        <Ionicons name="time-outline" size={13} color="#FFFFFF" />
-        <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY }] }}>
-          {activeSlide === 0 ? (
-            <Text style={styles.expiryHeaderPillText}>
-              🗓️ {expiryDetails.dayOfWeek}, {expiryDetails.formattedDate}
-            </Text>
-          ) : (
-            <Text style={styles.expiryHeaderPillHighlightText}>
-              ⚡ {expiryDetails.daysLeft} Days Left ({expiryDetails.dayOfWeek})
-            </Text>
-          )}
-        </Animated.View>
-      </LinearGradient>
-    </Animated.View>
+    <View style={styles.expiryHeaderPill}>
+      <Ionicons name="calendar-outline" size={13} color="#059669" />
+      <Text style={styles.expiryHeaderPillText}>Expires {expiryDetails.dayOfWeek}, {expiryDetails.formattedDate}</Text>
+    </View>
   );
 }
 
@@ -326,11 +263,12 @@ export default function SettingsScreen({ navigation }) {
 
   return (
     <View style={styles.root}>
-      {/* Top Header Banner */}
-      <View style={[styles.darkHeader, { paddingTop: Math.max(insets.top, 16) + 8 }]}>
+      <StatusBar style="light" />
+      {/* Blue Top Header */}
+      <View style={[styles.blueHeader, { paddingTop: insets.top + 6, height: 60 + insets.top }]}>
         <View style={styles.headerBar}>
           <TouchableOpacity
-            style={styles.circleBtn}
+            style={styles.headerCircleBtn}
             onPress={() => navigation?.navigate('Home')}
             activeOpacity={0.7}
           >
@@ -338,7 +276,7 @@ export default function SettingsScreen({ navigation }) {
           </TouchableOpacity>
           <Text style={styles.headerTitle}>Account</Text>
           <TouchableOpacity
-            style={styles.circleBtn}
+            style={styles.headerCircleBtn}
             onPress={handleOpenNotifications}
             activeOpacity={0.7}
           >
@@ -346,235 +284,310 @@ export default function SettingsScreen({ navigation }) {
             {unreadCount > 0 && <View style={styles.bellBadgeDot} />}
           </TouchableOpacity>
         </View>
+      </View>
 
-        {/* User Profile Center */}
-        <View style={styles.userCenter}>
-          <View style={styles.avatarWrapper}>
-            <View style={styles.avatarCircle}>
-              {user && user.avatar ? (
-                <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
-              ) : (
-                <Text style={styles.avatarInitial}>
-                  {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
-                </Text>
-              )}
-            </View>
-            <TouchableOpacity
-              style={styles.cameraIconBadge}
-              activeOpacity={0.8}
-              onPress={isLoggedIn ? undefined : handleOneTapGoogleSignIn}
-            >
-              <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
-            </TouchableOpacity>
-          </View>
-
-          <Text style={styles.userName}>
-            {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
-          </Text>
-          <Text style={styles.userEmail}>
-            {isLoggedIn ? user.email : 'Sign in to sync your plan on App & Web'}
-          </Text>
-
-          <View style={styles.badgeRow}>
-            {isPremiumUser ? (
-              <View style={styles.badgeColumn}>
-                <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.vipBadge}>
-                  <Ionicons name="star" size={11} color="#FFFFFF" />
-                  <Text style={styles.vipBadgeText}>★ VIP PREMIUM MEMBER</Text>
-                </LinearGradient>
-                <AnimatedExpiryHeaderBadge expiryDetails={expiryDetails} />
+      {/* Main Body */}
+      <ScrollView
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: Math.max(insets.bottom, 20) + 20 }
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* 1. Hero User Profile Card */}
+        <View style={styles.profileHeroCard}>
+          <View style={styles.heroCardInner}>
+            <View style={styles.avatarWrapper}>
+              <View style={styles.avatarCircle}>
+                {user && user.avatar ? (
+                  <Image source={{ uri: user.avatar }} style={styles.avatarImg} />
+                ) : (
+                  <Text style={styles.avatarInitial}>
+                    {isLoggedIn ? (user.name ? user.name[0].toUpperCase() : user.email[0].toUpperCase()) : 'G'}
+                  </Text>
+                )}
               </View>
-            ) : (
               <TouchableOpacity
-                style={styles.upgradeBadge}
+                style={styles.cameraIconBadge}
                 activeOpacity={0.8}
-                onPress={() => setShowSubscriptionModal(true)}
+                onPress={isLoggedIn ? undefined : handleOneTapGoogleSignIn}
               >
-                <Ionicons name="flash" size={11} color="#6366F1" />
-                <Text style={styles.upgradeBadgeText}>UPGRADE TO VIP</Text>
+                <Ionicons name="camera-outline" size={13} color="#FFFFFF" />
               </TouchableOpacity>
+            </View>
+
+            <View style={styles.profileInfoCol}>
+              <Text style={styles.profileNameText}>
+                {isLoggedIn ? (user.name || user.email.split('@')[0]) : 'Guest Account'}
+              </Text>
+              <Text style={styles.profileEmailText} numberOfLines={1}>
+                {isLoggedIn ? user.email : 'Sign in to sync VIP plan across devices'}
+              </Text>
+
+              <View style={styles.heroBadgesRow}>
+                {isPremiumUser ? (
+                  <>
+                    <LinearGradient colors={['#F59E0B', '#D97706']} style={styles.vipMemberBadge}>
+                      <MaterialCommunityIcons name="crown" size={13} color="#FFFFFF" />
+                      <Text style={styles.vipMemberBadgeText}>VIP PREMIUM MEMBER</Text>
+                    </LinearGradient>
+
+                    <View style={styles.expiryPillsRow}>
+                      <View style={styles.expiresPill}>
+                        <Ionicons name="calendar-outline" size={12} color="#059669" />
+                        <Text style={styles.expiresPillText}>Expires {expiryDetails.dayOfWeek}, {expiryDetails.formattedDate}</Text>
+                      </View>
+                      <View style={styles.daysLeftPillHeader}>
+                        <Text style={styles.daysLeftPillHeaderText}>{expiryDetails.daysLeft} Days Left</Text>
+                      </View>
+                    </View>
+                  </>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.freeUserBadge}
+                    activeOpacity={0.8}
+                    onPress={() => setShowSubscriptionModal(true)}
+                  >
+                    <Ionicons name="sparkles" size={12} color="#2563EB" />
+                    <Text style={styles.freeUserBadgeText}>FREE USER • UPGRADE TO VIP</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {isLoggedIn && isPremiumUser && (
+              <MaterialCommunityIcons name="crown" size={76} color="rgba(245, 158, 11, 0.25)" style={styles.crownWatermark} />
             )}
           </View>
         </View>
-      </View>
 
-      {/* White Curved Sheet Container */}
-      <View style={styles.whiteSheet}>
-        <ScrollView
-          contentContainerStyle={[
-            styles.scrollContent,
-            { paddingBottom: Math.max(insets.bottom, 20) + 20 }
-          ]}
-          showsVerticalScrollIndicator={false}
-        >
+        {/* 2. Premium Benefits Section */}
+        <View style={styles.sectionHeaderRow}>
+          <Text style={styles.sectionTitle}>Premium Benefits</Text>
+          <TouchableOpacity activeOpacity={0.7} onPress={() => setShowSubscriptionModal(true)}>
+            <View style={styles.unlockLinkRow}>
+              <Text style={styles.unlockPowerLink}>Unlock More Power</Text>
+              <Ionicons name="chevron-forward" size={14} color="#2563EB" />
+            </View>
+          </TouchableOpacity>
+        </View>
 
-          {/* Group 0: Official Blue Google Sign In Button (Only when NOT logged in) */}
-          {!isLoggedIn && (
-            <TouchableOpacity
-              style={styles.googleSignInBtn}
-              activeOpacity={0.85}
-              onPress={handleOneTapGoogleSignIn}
-            >
-              <View style={styles.googleIconTile}>
-                <Ionicons name="logo-google" size={24} color="#4285F4" />
+        <View style={styles.benefitsGridRow}>
+          <TouchableOpacity activeOpacity={0.8} style={styles.benefitCard} onPress={() => setShowSubscriptionModal(true)}>
+            <View style={[styles.benefitIconBox, { backgroundColor: '#E0F2FE' }]}>
+              <Ionicons name="flash" size={20} color="#2563EB" />
+            </View>
+            <Text style={styles.benefitTitle} numberOfLines={1}>10x Speed</Text>
+            <Text style={styles.benefitSubtitle} numberOfLines={2}>Faster Downloads</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.8} style={styles.benefitCard} onPress={() => setShowSubscriptionModal(true)}>
+            <View style={[styles.benefitIconBox, { backgroundColor: '#E0F2FE' }]}>
+              <Ionicons name="paper-plane" size={20} color="#0EA5E9" />
+            </View>
+            <Text style={styles.benefitTitle} numberOfLines={1}>Telegram Bot</Text>
+            <Text style={styles.benefitSubtitle} numberOfLines={2}>Instant Access</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.8} style={styles.benefitCard} onPress={() => setShowSubscriptionModal(true)}>
+            <View style={[styles.benefitIconBox, { backgroundColor: '#EEF2FF' }]}>
+              <Ionicons name="folder-open" size={20} color="#6366F1" />
+            </View>
+            <Text style={styles.benefitTitle} numberOfLines={1}>Folder Download</Text>
+            <Text style={styles.benefitSubtitle} numberOfLines={2}>Download Entire Folders</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity activeOpacity={0.8} style={styles.benefitCard} onPress={() => setShowSubscriptionModal(true)}>
+            <View style={[styles.benefitIconBox, { backgroundColor: '#E6F4EA' }]}>
+              <Ionicons name="headset" size={20} color="#10B981" />
+            </View>
+            <Text style={styles.benefitTitle} numberOfLines={1}>Priority Support</Text>
+            <Text style={styles.benefitSubtitle} numberOfLines={2}>Get Help Anytime</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* 3. GO PREMIUM / Unlock Full Power Banner */}
+        <TouchableOpacity activeOpacity={0.9} onPress={() => setShowSubscriptionModal(true)}>
+          <LinearGradient colors={['#3B82F6', '#4F46E5']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.promoBannerCard}>
+            <View style={styles.promoLeftCol}>
+              <Text style={styles.promoTag}>GO PREMIUM</Text>
+              <Text style={styles.promoTitle}>Unlock Full Power</Text>
+              <Text style={styles.promoDesc}>Faster downloads, Telegram bot access, 10x speed and more features!</Text>
+            </View>
+            <View style={styles.promoRightCol}>
+              <MaterialCommunityIcons name="crown" size={38} color="#FBBF24" style={styles.promoCrownIcon} />
+              <View style={styles.promoArrowCircle}>
+                <Ionicons name="chevron-forward" size={18} color="#2563EB" />
               </View>
-              <Text style={styles.googleBtnText}>Sign in with Google</Text>
-            </TouchableOpacity>
-          )}
+            </View>
+          </LinearGradient>
+        </TouchableOpacity>
 
-          {/* Group 1: Buy Premium & Manage Premium */}
-          <View style={styles.groupCard}>
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => setShowSubscriptionModal(true)}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
-                <Ionicons name="sparkles" size={18} color="#D97706" />
-              </View>
-              <View style={styles.rowTextCol}>
-                <Text style={styles.rowLabel}>Buy Premium</Text>
-                <Text style={styles.rowSubtitle}>Folder Download, Telegram Bot & 10x Speed</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
+        {/* Official Google Sign In Button (When not logged in) */}
+        {!isLoggedIn && (
+          <TouchableOpacity
+            style={styles.googleSignInBtn}
+            activeOpacity={0.85}
+            onPress={handleOneTapGoogleSignIn}
+          >
+            <View style={styles.googleIconTile}>
+              <Ionicons name="logo-google" size={24} color="#4285F4" />
+            </View>
+            <Text style={styles.googleBtnText}>Sign in with Google</Text>
+          </TouchableOpacity>
+        )}
 
-            <View style={styles.divider} />
+        {/* 4. Grouped Options Card 1: Premium */}
+        <View style={styles.groupCard}>
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => setShowSubscriptionModal(true)}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="sparkles" size={18} color="#D97706" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>Buy Premium</Text>
+              <Text style={styles.rowSubtitle}>Folder Download, Telegram Bot & 10x Speed</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => setShowManageModal(true)}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#EEF2FF' }]}>
-                <Ionicons name="shield-checkmark" size={18} color="#6366F1" />
-              </View>
-              <View style={styles.rowTextCol}>
-                <Text style={styles.rowLabel}>Manage Premium</Text>
-                <Text style={styles.rowSubtitle}>
-                  {isPremiumUser
-                    ? `${expiryDetails.daysLeft} Days Left • Expires ${expiryDetails.dayOfWeek}, ${expiryDetails.formattedDate}`
-                    : 'Tap to view membership benefits'}
-                </Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-          </View>
+          <View style={styles.divider} />
 
-          {/* Group 2: Edit Profile & Downloads */}
-          <View style={styles.groupCard}>
-            {isLoggedIn && (
-              <>
-                <TouchableOpacity
-                  style={styles.rowItem}
-                  activeOpacity={0.7}
-                  onPress={() => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`)}
-                >
-                  <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                    <Ionicons name="create-outline" size={18} color="#27272A" />
-                  </View>
-                  <Text style={styles.rowLabel}>Edit Profile</Text>
-                  <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-                </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => setShowManageModal(true)}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#EEF2FF' }]}>
+              <Ionicons name="shield-checkmark" size={18} color="#6366F1" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>Manage Premium</Text>
+              <Text style={styles.rowSubtitle}>
+                {isPremiumUser
+                  ? `${expiryDetails.daysLeft} Days Left • Expires ${expiryDetails.dayOfWeek}, ${expiryDetails.formattedDate}`
+                  : 'Tap to view membership benefits'}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
 
-                <View style={styles.divider} />
-              </>
-            )}
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => setShowAnnouncementsModal(true)}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#EFF6FF' }]}>
-                <Ionicons name="megaphone-outline" size={18} color="#2563EB" />
-              </View>
-              <View style={styles.rowTextCol}>
-                <Text style={styles.rowLabel}>Announcements & Updates</Text>
-                <Text style={styles.rowSubtitle}>View all news, anime releases & app updates</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => navigation?.navigate('Downloads')}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F4F4F5' }]}>
-                <Ionicons name="download-outline" size={18} color="#27272A" />
-              </View>
-              <Text style={styles.rowLabel}>Downloads</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Group 3: Support & Legal */}
-          <View style={styles.groupCard}>
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => Linking.openURL('https://t.me/+L7tcuoCsTaMxZWVl').catch(() => {})}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
-                <Ionicons name="paper-plane-outline" size={18} color="#0284C7" />
-              </View>
-              <Text style={styles.rowLabel}>Telegram Bot & Support</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={() => Linking.openURL('https://teraboxdownloader.co.in/privacy-policy').catch(() => {})}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#F1F5F9' }]}>
-                <Ionicons name="shield-checkmark-outline" size={18} color="#64748B" />
-              </View>
-              <Text style={styles.rowLabel}>Privacy Policy & Terms</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-
-            <View style={styles.divider} />
-
-            <TouchableOpacity
-              style={styles.rowItem}
-              activeOpacity={0.7}
-              onPress={openDirectPlayStorePage}
-            >
-              <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
-                <Ionicons name="star" size={18} color="#D97706" />
-              </View>
-              <Text style={styles.rowLabel}>Rate Us on Play Store ⭐️</Text>
-              <Ionicons name="chevron-forward" size={18} color="#A1A1AA" />
-            </TouchableOpacity>
-          </View>
-
-          {/* Group 4: Logout (ONLY shown when logged in) */}
+        {/* 5. Grouped Options Card 2: Profile & Announcements */}
+        <View style={styles.groupCard}>
           {isLoggedIn && (
-            <View style={styles.groupCard}>
+            <>
               <TouchableOpacity
                 style={styles.rowItem}
                 activeOpacity={0.7}
-                onPress={handleSignOut}
+                onPress={() => Alert.alert('Profile Info', `Name: ${user.name || 'N/A'}\nEmail: ${user.email}`)}
               >
-                <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
-                  <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+                <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
+                  <Ionicons name="create-outline" size={18} color="#0284C7" />
                 </View>
-                <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
-                  Logout
-                </Text>
-                <Ionicons name="chevron-forward" size={18} color="#EF4444" />
+                <Text style={styles.rowLabel}>Edit Profile</Text>
+                <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
               </TouchableOpacity>
-            </View>
+
+              <View style={styles.divider} />
+            </>
           )}
 
-        </ScrollView>
-      </View>
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => setShowAnnouncementsModal(true)}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#FEE2E2' }]}>
+              <Ionicons name="megaphone-outline" size={18} color="#EF4444" />
+            </View>
+            <View style={styles.rowTextCol}>
+              <Text style={styles.rowLabel}>Announcements & Updates</Text>
+              <Text style={styles.rowSubtitle}>View all news, anime releases & app updates</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => navigation?.navigate('Downloads')}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E6F4EA' }]}>
+              <Ionicons name="download-outline" size={18} color="#10B981" />
+            </View>
+            <Text style={styles.rowLabel}>Downloads</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 6. Grouped Options Card 3: Support & Policies */}
+        <View style={styles.groupCard}>
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => Linking.openURL('https://t.me/+L7tcuoCsTaMxZWVl').catch(() => {})}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#E0F2FE' }]}>
+              <Ionicons name="paper-plane-outline" size={18} color="#0284C7" />
+            </View>
+            <Text style={styles.rowLabel}>Telegram Bot & Support</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={() => Linking.openURL('https://teraboxdownloader.co.in/privacy-policy').catch(() => {})}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#EEF2FF' }]}>
+              <Ionicons name="shield-checkmark-outline" size={18} color="#6366F1" />
+            </View>
+            <Text style={styles.rowLabel}>Privacy Policy & Terms</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+
+          <View style={styles.divider} />
+
+          <TouchableOpacity
+            style={styles.rowItem}
+            activeOpacity={0.7}
+            onPress={openDirectPlayStorePage}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#FEF3C7' }]}>
+              <Ionicons name="star" size={18} color="#D97706" />
+            </View>
+            <Text style={styles.rowLabel}>Rate Us on Play Store ⭐️</Text>
+            <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 7. Grouped Options Card 4: Logout (When logged in) */}
+        {isLoggedIn && (
+          <View style={styles.groupCard}>
+            <TouchableOpacity
+              style={styles.rowItem}
+              activeOpacity={0.7}
+              onPress={handleSignOut}
+            >
+              <View style={[styles.iconCircle, { backgroundColor: '#FEF2F2' }]}>
+                <Ionicons name="log-out-outline" size={18} color="#EF4444" />
+              </View>
+              <Text style={[styles.rowLabel, { color: '#EF4444' }]}>
+                Logout
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color="#EF4444" />
+            </TouchableOpacity>
+          </View>
+        )}
+      </ScrollView>
 
       {/* Subscription Checkout Modal */}
       <SubscriptionModal
@@ -591,53 +604,50 @@ export default function SettingsScreen({ navigation }) {
       <Modal visible={showManageModal} animationType="slide" transparent onRequestClose={() => setShowManageModal(false)}>
         <View style={styles.manageOverlay}>
           <View style={styles.manageContainer}>
-            {/* Header */}
             <View style={styles.manageHeader}>
               <View style={styles.manageHeaderTitleRow}>
                 <Ionicons name="star" size={20} color="#F59E0B" />
                 <Text style={styles.manageHeaderTitle}>Manage Premium</Text>
               </View>
               <TouchableOpacity onPress={() => setShowManageModal(false)}>
-                <Ionicons name="close" size={22} color="#64748B" />
+                <Ionicons name="close" size={24} color="#64748B" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView contentContainerStyle={styles.manageBody} showsVerticalScrollIndicator={false}>
-              {/* Active Membership Banner Card */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.manageBody}>
               <AnimatedManageExpiryCard expiryDetails={expiryDetails} isLoggedIn={isLoggedIn} user={user} />
 
-              {/* Unlocked Features List */}
-              <Text style={styles.manageSectionHeading}>✨ Features Included in Subscription:</Text>
+              <Text style={styles.manageSectionHeading}>✨ Premium Membership Benefits:</Text>
 
               <View style={styles.manageFeatureItem}>
                 <View style={[styles.manageIconBox, { backgroundColor: '#EEF2FF' }]}>
-                  <Ionicons name="folder-open" size={20} color="#6366F1" />
+                  <Ionicons name="flash" size={20} color="#6366F1" />
                 </View>
                 <View style={styles.manageFeatureTextCol}>
-                  <Text style={styles.manageFeatureTitle}>TeraBox Folder Download Support</Text>
-                  <Text style={styles.manageFeatureSub}>Download full multi-file TeraBox folders at once</Text>
+                  <Text style={styles.manageFeatureTitle}>10x Ultra-Fast Speeds</Text>
+                  <Text style={styles.manageFeatureSub}>Multi-connection parallel downloads enabled</Text>
                 </View>
                 <Ionicons name="checkmark-circle" size={20} color="#10B981" />
               </View>
 
               <View style={styles.manageFeatureItem}>
                 <View style={[styles.manageIconBox, { backgroundColor: '#E0F2FE' }]}>
-                  <Ionicons name="paper-plane" size={20} color="#0284C7" />
+                  <Ionicons name="folder-open" size={20} color="#0EA5E9" />
                 </View>
                 <View style={styles.manageFeatureTextCol}>
-                  <Text style={styles.manageFeatureTitle}>Direct Files in Telegram Bot</Text>
-                  <Text style={styles.manageFeatureSub}>Get direct playable video & document files in Telegram</Text>
+                  <Text style={styles.manageFeatureTitle}>TeraBox Folder Downloads</Text>
+                  <Text style={styles.manageFeatureSub}>Extract and download multi-file folder links</Text>
                 </View>
                 <Ionicons name="checkmark-circle" size={20} color="#10B981" />
               </View>
 
               <View style={styles.manageFeatureItem}>
                 <View style={[styles.manageIconBox, { backgroundColor: '#FEF3C7' }]}>
-                  <Ionicons name="flash" size={20} color="#D97706" />
+                  <Ionicons name="paper-plane" size={20} color="#D97706" />
                 </View>
                 <View style={styles.manageFeatureTextCol}>
-                  <Text style={styles.manageFeatureTitle}>10x Ultra-Fast Multi-Thread Speed</Text>
-                  <Text style={styles.manageFeatureSub}>Maximum ISP acceleration with zero speed limits</Text>
+                  <Text style={styles.manageFeatureTitle}>Telegram Bot Access</Text>
+                  <Text style={styles.manageFeatureSub}>Direct file delivery in official Telegram Bot</Text>
                 </View>
                 <Ionicons name="checkmark-circle" size={20} color="#10B981" />
               </View>
@@ -664,18 +674,6 @@ export default function SettingsScreen({ navigation }) {
                 <Ionicons name="checkmark-circle" size={20} color="#10B981" />
               </View>
 
-              <View style={styles.manageFeatureItem}>
-                <View style={[styles.manageIconBox, { backgroundColor: '#FCE7F3' }]}>
-                  <Ionicons name="film" size={20} color="#DB2777" />
-                </View>
-                <View style={styles.manageFeatureTextCol}>
-                  <Text style={styles.manageFeatureTitle}>1080p Full HD Video Player</Text>
-                  <Text style={styles.manageFeatureSub}>Instant streaming with multi-quality resolution selector</Text>
-                </View>
-                <Ionicons name="checkmark-circle" size={20} color="#10B981" />
-              </View>
-
-              {/* Extend / Upgrade Button */}
               <TouchableOpacity
                 style={styles.extendBtn}
                 activeOpacity={0.8}
@@ -731,191 +729,374 @@ export default function SettingsScreen({ navigation }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#18181B',
+    backgroundColor: '#F8FAFC',
   },
-  darkHeader: {
-    backgroundColor: '#18181B',
-    paddingHorizontal: 20,
-    paddingBottom: 24,
+  blueHeader: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
   },
   headerBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
   },
-  circleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(255, 255, 255, 0.12)',
+  headerCircleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
   },
   bellBadgeDot: {
     position: 'absolute',
-    top: 8,
-    right: 8,
-    width: 6,
-    height: 6,
-    borderRadius: 3,
+    top: 9,
+    right: 9,
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
     backgroundColor: '#EF4444',
+    borderWidth: 1,
+    borderColor: '#2563EB',
   },
   headerTitle: {
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: 20,
+    fontWeight: '800',
     color: '#FFFFFF',
+    letterSpacing: 0.3,
   },
-  userCenter: {
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    gap: 16,
+  },
+
+  /* Profile Hero Card */
+  profileHeroCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 3,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    overflow: 'hidden',
+  },
+  heroCardInner: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 4,
+    gap: 14,
+    position: 'relative',
   },
   avatarWrapper: {
     position: 'relative',
-    marginBottom: 12,
   },
   avatarCircle: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    backgroundColor: '#3F3F46',
+    width: 70,
+    height: 70,
+    borderRadius: 35,
+    backgroundColor: '#0F172A',
     alignItems: 'center',
     justifyContent: 'center',
-    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: '#DBEAFE',
   },
   avatarImg: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
   },
   avatarInitial: {
-    fontSize: 32,
+    fontSize: 30,
     fontWeight: '800',
     color: '#FFFFFF',
   },
   cameraIconBadge: {
     position: 'absolute',
-    bottom: 0,
-    right: 0,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    borderWidth: 1.5,
+    bottom: -2,
+    right: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#2563EB',
+    borderWidth: 2,
     borderColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
+    elevation: 2,
   },
-  userName: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: '#FFFFFF',
+  profileInfoCol: {
+    flex: 1,
   },
-  userEmail: {
+  profileNameText: {
+    fontSize: 19,
+    fontWeight: '800',
+    color: '#0F172A',
+    letterSpacing: 0.2,
+  },
+  profileEmailText: {
     fontSize: 13,
-    color: '#A1A1AA',
+    color: '#64748B',
     marginTop: 2,
-    marginBottom: 8,
+    fontWeight: '500',
   },
-  badgeRow: {
-    marginTop: 2,
+  heroBadgesRow: {
+    marginTop: 8,
+    gap: 6,
   },
-  vipBadge: {
+  vipMemberBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    paddingHorizontal: 12,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
   },
-  vipBadgeText: {
+  vipMemberBadgeText: {
     fontSize: 10,
     fontWeight: '800',
     color: '#FFFFFF',
     letterSpacing: 0.5,
   },
-  upgradeBadge: {
+  expiryPillsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+  expiresPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#ECFDF5',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+  },
+  expiresPillText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#047857',
+  },
+  daysLeftPillHeader: {
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  daysLeftPillHeaderText: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#1D4ED8',
+  },
+  freeUserBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(99, 102, 241, 0.15)',
-    paddingHorizontal: 12,
+    backgroundColor: '#EFF6FF',
+    paddingHorizontal: 10,
     paddingVertical: 4,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#6366F1',
+    borderColor: '#BFDBFE',
+    alignSelf: 'flex-start',
   },
-  upgradeBadgeText: {
+  freeUserBadgeText: {
     fontSize: 10,
     fontWeight: '800',
-    color: '#818CF8',
-    letterSpacing: 0.5,
+    color: '#1D4ED8',
+    letterSpacing: 0.4,
   },
-  whiteSheet: {
+  crownWatermark: {
+    position: 'absolute',
+    right: -10,
+    top: -10,
+  },
+
+  /* Benefits Horizontal Section */
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+    marginBottom: -4,
+  },
+  sectionTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#0F172A',
+  },
+  unlockLinkRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  unlockPowerLink: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#2563EB',
+  },
+  benefitsGridRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    gap: 6,
+    paddingVertical: 4,
+  },
+  benefitCard: {
     flex: 1,
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    overflow: 'hidden',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 2,
+    shadowColor: '#64748B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
   },
+  benefitIconBox: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 6,
+  },
+  benefitTitle: {
+    fontSize: 11,
+    fontWeight: '800',
+    color: '#0F172A',
+    textAlign: 'center',
+  },
+  benefitSubtitle: {
+    fontSize: 9,
+    color: '#64748B',
+    marginTop: 2,
+    textAlign: 'center',
+    fontWeight: '500',
+    lineHeight: 11,
+  },
+
+  /* GO PREMIUM Banner Card */
+  promoBannerCard: {
+    borderRadius: 20,
+    padding: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    elevation: 4,
+    shadowColor: '#2563EB',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  promoLeftCol: {
+    flex: 1,
+    paddingRight: 10,
+  },
+  promoTag: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#93C5FD',
+    letterSpacing: 1,
+  },
+  promoTitle: {
+    fontSize: 19,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    marginTop: 2,
+  },
+  promoDesc: {
+    fontSize: 12,
+    color: '#E0E7FF',
+    marginTop: 4,
+    lineHeight: 16,
+    fontWeight: '500',
+  },
+  promoRightCol: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  promoCrownIcon: {
+    marginBottom: -4,
+  },
+  promoArrowCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 3,
+  },
+
+  /* Google Sign In Button */
   googleSignInBtn: {
     backgroundColor: '#4285F4',
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: '#3B82F6',
+    borderRadius: 16,
     flexDirection: 'row',
     alignItems: 'center',
     padding: 6,
     paddingRight: 20,
-    marginBottom: 4,
-    elevation: 4,
+    elevation: 3,
     shadowColor: '#4285F4',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.35,
+    shadowOpacity: 0.3,
     shadowRadius: 6,
   },
   googleIconTile: {
-    width: 44,
-    height: 44,
-    borderRadius: 10,
+    width: 42,
+    height: 42,
+    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 16,
-  },
-  googleLogoImg: {
-    width: 24,
-    height: 24,
-    resizeMode: 'contain',
+    marginRight: 14,
   },
   googleBtnText: {
     flex: 1,
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-    letterSpacing: 0.2,
   },
-  scrollContent: {
-    padding: 16,
-    gap: 12,
-  },
+
+  /* Group Cards */
   groupCard: {
-    backgroundColor: '#F4F4F6',
+    backgroundColor: '#FFFFFF',
     borderRadius: 18,
     paddingHorizontal: 14,
-    paddingVertical: 4,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    elevation: 2,
+    shadowColor: '#64748B',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.04,
+    shadowRadius: 6,
   },
   rowItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 13,
+    paddingVertical: 14,
     gap: 14,
   },
   iconCircle: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -925,19 +1106,21 @@ const styles = StyleSheet.create({
   rowLabel: {
     flex: 1,
     fontSize: 15,
-    fontWeight: '600',
-    color: '#18181B',
+    fontWeight: '700',
+    color: '#0F172A',
   },
   rowSubtitle: {
     fontSize: 11,
-    color: '#71717A',
-    marginTop: 1,
+    color: '#64748B',
+    marginTop: 2,
+    fontWeight: '500',
   },
   divider: {
     height: 1,
-    backgroundColor: '#E4E4E7',
-    marginLeft: 50,
+    backgroundColor: '#F1F5F9',
+    marginLeft: 52,
   },
+
   bannerContainer: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -982,14 +1165,42 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     padding: 16,
   },
+  manageStatusBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
   manageStatusBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 6,
-    marginBottom: 8,
   },
   manageStatusBadgeText: {
     fontSize: 11,
+    fontWeight: '800',
+    color: '#10B981',
+    letterSpacing: 0.5,
+  },
+  livePulseContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: 'rgba(16, 185, 129, 0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(16, 185, 129, 0.3)',
+  },
+  livePulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#10B981',
+  },
+  livePulseText: {
+    fontSize: 9,
     fontWeight: '800',
     color: '#10B981',
     letterSpacing: 0.5,
@@ -1045,74 +1256,6 @@ const styles = StyleSheet.create({
     color: '#64748B',
     marginTop: 2,
   },
-  extendBtn: {
-    marginTop: 6,
-    borderRadius: 16,
-    overflow: 'hidden',
-  },
-  extendGradient: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 14,
-  },
-  badgeColumn: {
-    alignItems: 'center',
-    gap: 4,
-  },
-  expiryHeaderPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 5,
-    borderRadius: 14,
-    elevation: 2,
-    shadowColor: '#10B981',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-  },
-  expiryHeaderPillText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  expiryHeaderPillHighlightText: {
-    fontSize: 11,
-    fontWeight: '800',
-    color: '#FEF08A',
-  },
-  manageStatusBadgeRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 8,
-  },
-  livePulseContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.3)',
-  },
-  livePulseDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: '#10B981',
-  },
-  livePulseText: {
-    fontSize: 9,
-    fontWeight: '800',
-    color: '#10B981',
-    letterSpacing: 0.5,
-  },
   expiryDetailCardBox: {
     backgroundColor: 'rgba(255, 255, 255, 0.06)',
     borderRadius: 12,
@@ -1166,6 +1309,18 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '800',
     color: '#FFFFFF',
+  },
+  extendBtn: {
+    marginTop: 6,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  extendGradient: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 14,
   },
   extendBtnText: {
     fontSize: 15,
