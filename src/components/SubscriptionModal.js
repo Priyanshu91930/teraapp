@@ -36,28 +36,52 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       id: 'weekly',
       sku: 'weekly_pass',
       name: 'Weekly Pass',
-      price: '₹49',
       duration: '7 Days Access',
       badge: null,
       desc: 'Ideal for short-term fast downloads',
+      heading: '✨ What You Get with Premium (Weekly):',
+      features: [
+        { icon: 'time-outline', color: '#6366F1', text: '7 Days Unlimited VIP Access' },
+        { icon: 'folder-open', color: '#6366F1', text: 'TeraBox Folder Download Support' },
+        { icon: 'paper-plane', color: '#0EA5E9', text: 'Direct File Delivery in Telegram Bot' },
+        { icon: 'flash', color: '#10B981', text: '10x Ultra-Fast Download Speed' },
+        { icon: 'ban-outline', color: '#EF4444', text: '100% Ad-Free Experience in App & Web' },
+        { icon: 'film-outline', color: '#8B5CF6', text: '1080p Full HD Video Streaming & Player' },
+      ],
     },
     {
       id: 'monthly',
       sku: 'monthly_pro',
       name: 'Monthly Pro',
-      price: '₹99',
       duration: '30 Days Access',
       badge: 'MOST POPULAR',
       desc: 'Unlimited speed + App, Web & Bot Access',
+      heading: '✨ What You Get with Premium (Monthly):',
+      features: [
+        { icon: 'calendar-outline', color: '#F59E0B', text: '30 Days Full Access on App, Web & Bot' },
+        { icon: 'folder-open', color: '#6366F1', text: 'TeraBox Folder Download Support' },
+        { icon: 'paper-plane', color: '#0EA5E9', text: 'Direct File Delivery in Telegram Bot' },
+        { icon: 'flash', color: '#10B981', text: '10x Ultra-Fast Download Speed' },
+        { icon: 'ban-outline', color: '#EF4444', text: '100% Ad-Free Experience in App & Web' },
+        { icon: 'film-outline', color: '#8B5CF6', text: '1080p Full HD Video Streaming & Player' },
+      ],
     },
     {
       id: 'yearly',
       sku: 'yearly_vip',
       name: 'Yearly VIP',
-      price: '₹499',
       duration: '365 Days Access',
       badge: 'SAVE 75%',
       desc: 'Best value for frequent downloaders',
+      heading: '✨ What You Get with Premium (Yearly):',
+      features: [
+        { icon: 'diamond-outline', color: '#10B981', text: '365 Days Uninterrupted VIP Membership' },
+        { icon: 'pricetag-outline', color: '#10B981', text: 'Save Over 75% Compared to Monthly' },
+        { icon: 'folder-open', color: '#6366F1', text: 'Unlimited TeraBox Folder Downloads' },
+        { icon: 'paper-plane', color: '#0EA5E9', text: 'Dedicated Telegram Bot Bandwidth' },
+        { icon: 'flash', color: '#10B981', text: 'Top Priority High-Speed Server CDN' },
+        { icon: 'ban-outline', color: '#EF4444', text: '100% Ad-Free Everywhere + All Devices' },
+      ],
     },
   ];
 
@@ -144,28 +168,29 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
   async function verifyAndActivatePurchase(purchaseToken, productId) {
     try {
       setLoading(true);
-      let activePlan = selectedPlan;
+      let activePlanId = selectedPlan;
       if (productId) {
         const pid = String(productId).toLowerCase();
-        if (pid.includes('weekly')) activePlan = 'weekly';
-        else if (pid.includes('yearly')) activePlan = 'yearly';
-        else if (pid.includes('monthly')) activePlan = 'monthly';
+        if (pid.includes('weekly')) activePlanId = 'weekly';
+        else if (pid.includes('yearly')) activePlanId = 'yearly';
+        else if (pid.includes('monthly')) activePlanId = 'monthly';
       }
 
       console.log('[IAP Verification] Sending token to backend server...', {
         email: user?.email,
         productId,
         purchaseToken: purchaseToken ? purchaseToken.substring(0, 20) + '...' : '',
-        activePlan,
+        activePlan: activePlanId,
       });
+
       const res = await fetch(`${API_BASE_URL}/api/payment/verify-play-purchase`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: user?.email,
           purchaseToken: purchaseToken || `test_token_${Date.now()}`,
-          productId: productId || activePlan,
-          plan: activePlan,
+          productId: productId || activePlanId,
+          plan: activePlanId,
         }),
       });
       const data = await res.json();
@@ -175,7 +200,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       if (data && data.success) {
         Alert.alert(
           '🎉 VIP Premium Activated!',
-          `Thank you for upgrading! Your ${activePlan.toUpperCase()} plan is now active on Mobile App, Web & Telegram Bot.`
+          `Thank you for upgrading! Your ${activePlanId.toUpperCase()} plan is now active on Mobile App, Web & Telegram Bot.`
         );
         if (onPaymentSuccess) onPaymentSuccess(user?.email);
         if (onClose) onClose();
@@ -242,31 +267,35 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                 }
               }
             }
-          } catch (e) {
-            // ignore
-          }
+          } catch (e) {}
+
           Alert.alert(
-            'Google Play Lock Reset',
-            'Your previous Google Play purchase session has been cleared. Please tap "Pay Securely" again now to proceed with your new payment.',
+            '🔄 Purchase Sync',
+            'Your previous purchase is being verified and renewed. Please tap Pay again in a moment.',
             [{ text: 'OK' }]
           );
-        } else if (code !== 'E_USER_CANCELLED' && code !== 'user-cancelled' && code !== 'UserCancelled') {
-          Alert.alert(
-            'Google Play Store Billing',
-            msg || 'Payment cancelled or unavailable.'
-          );
+        } else if (code === 'E_USER_CANCELLED') {
+          console.log('[IAP Action] User cancelled the payment prompt.');
+        } else {
+          Alert.alert('Payment Cancelled', msg || 'Could not complete Google Play purchase.');
         }
       }
-    } catch (topErr) {
+    } catch (err) {
       setLoading(false);
-      console.log('[IAP Action Error] Top-level Exception:', topErr?.message || topErr);
-    } finally {
-      setLoading(false);
+      console.log('[IAP Action General Error]:', err?.message || err);
     }
   }
 
+  // Active plan for dynamic features header
+  const activePlan = plans.find((p) => p.id === selectedPlan) || plans[1];
+
   return (
-    <Modal visible={visible} animationType="fade" transparent onRequestClose={onClose}>
+    <Modal
+      visible={visible}
+      animationType="slide"
+      transparent={true}
+      onRequestClose={onClose}
+    >
       <View style={styles.overlay}>
         <View style={styles.container}>
           {/* Header */}
@@ -281,39 +310,15 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
           </View>
 
           <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.body}>
-            {/* Features */}
+            {/* Dynamic Features Card based on selected plan */}
             <View style={styles.featuresCard}>
-              <Text style={styles.featuresHeading}>✨ What You Get with Premium:</Text>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="folder-open" size={18} color="#6366F1" />
-                <Text style={styles.featureText}>TeraBox Folder Download Support</Text>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="paper-plane" size={18} color="#0EA5E9" />
-                <Text style={styles.featureText}>Direct File Delivery in Telegram Bot</Text>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="flash" size={18} color="#10B981" />
-                <Text style={styles.featureText}>10x Ultra-Fast Download Speed</Text>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="hardware-chip-outline" size={18} color="#F59E0B" />
-                <Text style={styles.featureText}>1 Subscription = 3 Memberships (App, Web & Bot)</Text>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="ban-outline" size={18} color="#EF4444" />
-                <Text style={styles.featureText}>100% Ad-Free Experience in App & Web</Text>
-              </View>
-
-              <View style={styles.featureItem}>
-                <Ionicons name="film-outline" size={18} color="#8B5CF6" />
-                <Text style={styles.featureText}>1080p Full HD Video Streaming & Player</Text>
-              </View>
+              <Text style={styles.featuresHeading}>{activePlan.heading}</Text>
+              {activePlan.features.map((feat, idx) => (
+                <View key={idx} style={styles.featureItem}>
+                  <Ionicons name={feat.icon} size={18} color={feat.color} />
+                  <Text style={styles.featureText}>{feat.text}</Text>
+                </View>
+              ))}
             </View>
 
             {/* Plans List */}
@@ -323,7 +328,8 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
               const storeProd = (subscriptionsList || []).find(
                 (p) => p && (p.id === item.sku || p.productId === item.sku || p.sku === item.sku)
               );
-              const displayPrice = storeProd?.displayPrice || item.price;
+              // Dynamic price directly from Google Play Store (zero hardcoding)
+              const displayPrice = storeProd?.displayPrice;
 
               return (
                 <TouchableOpacity
@@ -347,8 +353,12 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                       <Text style={styles.planName}>{item.name}</Text>
                       <Text style={styles.planDesc}>{item.desc}</Text>
                     </View>
-                    <View style={{ alignItems: 'flex-end' }}>
-                      <Text style={styles.planPrice}>{displayPrice}</Text>
+                    <View style={{ alignItems: 'flex-end', marginLeft: 6 }}>
+                      {displayPrice ? (
+                        <Text style={styles.planPrice}>{displayPrice}</Text>
+                      ) : (
+                        <ActivityIndicator size="small" color="#2563EB" style={{ paddingVertical: 4 }} />
+                      )}
                       <Text style={styles.planDuration}>{item.duration}</Text>
                     </View>
                   </View>
