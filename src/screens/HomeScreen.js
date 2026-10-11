@@ -203,6 +203,7 @@ export default function HomeScreen({ navigation, route }) {
   const [playerSource, setPlayerSource] = useState(null); // { url, headers }
   const [playerName, setPlayerName] = useState(null);
   const [isResultFolderExpanded, setIsResultFolderExpanded] = useState(true);
+  const [loadingMoreFolder, setLoadingMoreFolder] = useState(false);
 
   // Reference for rewarded interstitial
   const rewardedInterstitialRef = useRef(null);
@@ -478,10 +479,11 @@ export default function HomeScreen({ navigation, route }) {
 
     try {
       const s = settings || await getSettings();
-      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser);
+      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser, 1, 5);
       
+      const totalCount = data.totalFiles || (data.isFolder ? (data.totalCount || 0) : 0) || (data.list && data.list.length > 1 ? data.list.length : 1);
       const folderRawTitle = data.title ? data.title.split('/').filter(Boolean).pop() : '';
-      const folderTitle = folderRawTitle || (data.list && data.list.length > 1 ? `Folder (${data.list.length} Files)` : '');
+      const folderTitle = folderRawTitle || `Folder (${totalCount} Files)`;
       const rawList = Array.isArray(data.list) && data.list.length > 0 ? data.list : [data];
       const formattedFiles = rawList.map(item => ({
         name: item.name || item.server_filename || 'video.mp4',
@@ -498,13 +500,14 @@ export default function HomeScreen({ navigation, route }) {
       const isFolder = Boolean(
         data.isFolder ||
         data.isFolderRestricted ||
+        totalCount > 1 ||
         formattedFiles.length > 1 ||
         (data.list && data.list.length > 1) ||
         (data.rawList && data.rawList.length > 1) ||
         (data.rawJson && (data.rawJson.isFolder || data.rawJson.isFolderRestricted || data.rawJson.code === 'VIP_REQUIRED_FOR_FOLDERS'))
       );
 
-      console.log(`[Resolve] Resolved link. isFolder=${isFolder}, isPremiumUser=${isPremiumUser}, formattedCount=${formattedFiles.length}`);
+      console.log(`[Resolve] Resolved link. isFolder=${isFolder}, isPremiumUser=${isPremiumUser}, formattedCount=${formattedFiles.length}, totalFiles=${totalCount}`);
 
       if (isFolder && !isPremiumUser) {
         setResult(null);
@@ -524,11 +527,14 @@ export default function HomeScreen({ navigation, route }) {
         throw new Error('Could not find any downloadable files for this link.');
       }
 
-      if (formattedFiles.length > 1) {
+      if (isFolder || formattedFiles.length > 1) {
         const folderResult = {
           isFolder: true,
-          name: folderTitle || `Folder (${formattedFiles.length} Files)`,
-          size: `${formattedFiles.length} Files`,
+          name: folderTitle || `Folder (${totalCount} Files)`,
+          size: `${totalCount} Files`,
+          totalFiles: totalCount,
+          currentPage: data.page || 1,
+          hasMore: Boolean(data.hasMore),
           thumbnail: formattedFiles[0]?.thumbnail || '',
           files: formattedFiles,
           shareUrl: url,
@@ -542,8 +548,8 @@ export default function HomeScreen({ navigation, route }) {
       try {
         const currentUser = user || await getStoredUser();
         await addHistoryItem({
-          name: formattedFiles.length > 1 ? (folderTitle || `Folder (${formattedFiles.length} Files)`) : formattedFiles[0].name,
-          size: formattedFiles.length > 1 ? `${formattedFiles.length} Files` : formattedFiles[0].size,
+          name: (isFolder || formattedFiles.length > 1) ? (folderTitle || `Folder (${totalCount} Files)`) : formattedFiles[0].name,
+          size: (isFolder || formattedFiles.length > 1) ? `${totalCount} Files` : formattedFiles[0].size,
           thumbnail: formattedFiles[0]?.thumbnail || '',
           url: url,
           dlink: formattedFiles[0]?.dlink || '',
@@ -582,6 +588,54 @@ export default function HomeScreen({ navigation, route }) {
       setParsing(false);
     }
   }
+
+  const loadNextFolderPage = async () => {
+    if (loadingMoreFolder || !result || !result.isFolder || !result.hasMore) return;
+    setLoadingMoreFolder(true);
+    try {
+      const s = settings || await getSettings();
+      const nextPage = (result.currentPage || 1) + 1;
+      console.log(`[Folder Pagination] Fetching page ${nextPage} for folder: ${result.name}`);
+      const nextData = await resolveTeraboxLink(s.apiBaseUrl, result.shareUrl, s.downloadQuality, isPremiumUser, nextPage, 5);
+
+      const nextRawList = Array.isArray(nextData.list) && nextData.list.length > 0 ? nextData.list : [];
+      const nextFormattedFiles = nextRawList.map(item => ({
+        name: item.name || item.server_filename || 'video.mp4',
+        size: item.size || 'Unknown',
+        thumbnail: item.thumbnail || item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || item.thumbs?.icon || item.pic || item.image || '',
+        dlink: item.dlink || item.download_url || '',
+        download_url: item.download_url || item.dlink || '',
+        stream_url: item.stream_url || '',
+        downloadHeaders: nextData.downloadHeaders || item.downloadHeaders || {},
+        shareUrl: result.shareUrl,
+        folderName: result.name,
+      })).filter(item => item.dlink || item.download_url);
+
+      setResult(prev => {
+        if (!prev) return prev;
+        const seen = new Set(prev.files.map(f => f.name + '_' + f.size));
+        const uniqueNew = nextFormattedFiles.filter(f => !seen.has(f.name + '_' + f.size));
+        return {
+          ...prev,
+          currentPage: nextPage,
+          hasMore: Boolean(nextData.hasMore),
+          files: [...prev.files, ...uniqueNew],
+        };
+      });
+    } catch (err) {
+      console.log('[Folder Load More Error]:', err.message);
+    } finally {
+      setLoadingMoreFolder(false);
+    }
+  };
+
+  const handleFolderScroll = (event) => {
+    const { layoutMeasurement, contentOffset, contentSize } = event.nativeEvent;
+    const isCloseToBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - 35;
+    if (isCloseToBottom && result?.hasMore && !loadingMoreFolder) {
+      loadNextFolderPage();
+    }
+  };
 
   const handleDownloadItem = async (fileItem) => {
     const dlUrl = fileItem?.dlink || fileItem?.download_url || fileItem?.url;
@@ -1169,7 +1223,7 @@ export default function HomeScreen({ navigation, route }) {
                       {result.name}
                     </Text>
                     <Text style={styles.resultSize}>
-                      {result.files.length} items ready to download
+                      {result.totalFiles ? `Total ${result.totalFiles} Files • ${result.files.length} Loaded` : `${result.files.length} items ready to download`}
                     </Text>
                   </View>
                   <TouchableOpacity
@@ -1178,7 +1232,7 @@ export default function HomeScreen({ navigation, route }) {
                     activeOpacity={0.8}
                   >
                     <Ionicons name="cloud-download" size={14} color="#FFFFFF" style={{ marginRight: 4 }} />
-                    <Text style={styles.downloadAllBtnText}>Download All</Text>
+                    <Text style={styles.downloadAllBtnText}>Download All ({result.files.length})</Text>
                   </TouchableOpacity>
                   <Ionicons
                     name={isResultFolderExpanded ? 'chevron-up' : 'chevron-down'}
@@ -1191,50 +1245,85 @@ export default function HomeScreen({ navigation, route }) {
                 {isResultFolderExpanded && (
                   <>
                     <View style={styles.folderDivider} />
-                    <View style={styles.folderFilesContainer}>
+                    <ScrollView
+                      style={styles.folderScrollView}
+                      contentContainerStyle={styles.folderScrollContent}
+                      showsVerticalScrollIndicator={true}
+                      persistentScrollbar={true}
+                      nestedScrollEnabled={true}
+                      onScroll={handleFolderScroll}
+                      scrollEventThrottle={150}
+                    >
                       {result.files.map((file, idx) => {
                         const isVideo = file.stream_url || (file.name && /\.(mp4|mkv|avi|mov|webm|flv|3gp)$/i.test(file.name));
                         return (
                           <View key={idx} style={styles.folderFileItem}>
-                        {file.thumbnail ? (
-                          <Image source={{ uri: file.thumbnail }} style={styles.folderThumbImg} />
-                        ) : (
-                          <View style={styles.folderThumbFallback}>
-                            <Ionicons name={isVideo ? "videocam-outline" : "document-text-outline"} size={20} color="#3B82F6" />
+                            {file.thumbnail ? (
+                              <Image source={{ uri: file.thumbnail }} style={styles.folderThumbImg} />
+                            ) : (
+                              <View style={styles.folderThumbFallback}>
+                                <Ionicons name={isVideo ? "videocam-outline" : "document-text-outline"} size={20} color="#3B82F6" />
+                              </View>
+                            )}
+                            <View style={styles.folderFileInfo}>
+                              <Text style={styles.folderFileName} numberOfLines={1}>
+                                {file.name}
+                              </Text>
+                              <Text style={styles.folderFileSize}>{file.size}</Text>
+                            </View>
+
+                            <View style={styles.folderFileActions}>
+                              {isVideo ? (
+                                <TouchableOpacity
+                                  style={styles.folderActionIconBtn}
+                                  hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
+                                  onPress={() => handleWatchItem(file)}
+                                  activeOpacity={0.7}
+                                >
+                                  <Ionicons name="play-circle" size={28} color="#6366F1" />
+                                </TouchableOpacity>
+                              ) : null}
+
+                              <FileDownloadButton
+                                file={file}
+                                onDownloadClick={handleDownloadItem}
+                                onOpenClick={handleOpenFileOrShare}
+                              />
+                            </View>
                           </View>
-                        )}
-                        <View style={styles.folderFileInfo}>
-                          <Text style={styles.folderFileName} numberOfLines={1}>
-                            {file.name}
+                        );
+                      })}
+
+                      {loadingMoreFolder && (
+                        <View style={styles.folderLoadingMoreRow}>
+                          <ActivityIndicator size="small" color="#3B82F6" />
+                          <Text style={styles.folderLoadingMoreText}>Loading next 5 files...</Text>
+                        </View>
+                      )}
+
+                      {result.hasMore && !loadingMoreFolder && (
+                        <TouchableOpacity
+                          style={styles.loadMoreFolderBtn}
+                          onPress={loadNextFolderPage}
+                          activeOpacity={0.8}
+                        >
+                          <Ionicons name="arrow-down-circle-outline" size={16} color="#2563EB" style={{ marginRight: 6 }} />
+                          <Text style={styles.loadMoreFolderBtnText}>
+                            Load Next 5 Files ({result.files.length} of {result.totalFiles} loaded)
                           </Text>
-                          <Text style={styles.folderFileSize}>{file.size}</Text>
-                        </View>
+                        </TouchableOpacity>
+                      )}
 
-                        <View style={styles.folderFileActions}>
-                          {isVideo ? (
-                            <TouchableOpacity
-                              style={styles.folderActionIconBtn}
-                              hitSlop={{ top: 12, bottom: 12, left: 10, right: 10 }}
-                              onPress={() => handleWatchItem(file)}
-                              activeOpacity={0.7}
-                            >
-                              <Ionicons name="play-circle" size={28} color="#6366F1" />
-                            </TouchableOpacity>
-                          ) : null}
-
-                          <FileDownloadButton
-                            file={file}
-                            onDownloadClick={handleDownloadItem}
-                            onOpenClick={handleOpenFileOrShare}
-                          />
+                      {!result.hasMore && result.files.length > 5 && (
+                        <View style={styles.folderAllLoadedRow}>
+                          <Ionicons name="checkmark-circle-outline" size={15} color="#10B981" style={{ marginRight: 5 }} />
+                          <Text style={styles.folderAllLoadedText}>All {result.totalFiles || result.files.length} files loaded</Text>
                         </View>
-                      </View>
-                    );
-                  })}
-                </View>
-              </>
-            )}
-          </View>
+                      )}
+                    </ScrollView>
+                  </>
+                )}
+              </View>
             ) : (
               <View style={styles.resultCard}>
                 <View style={styles.resultHeader}>
@@ -2068,8 +2157,54 @@ const styles = StyleSheet.create({
     backgroundColor: '#E2E8F0',
     marginVertical: 10,
   },
+  folderScrollView: {
+    maxHeight: 380,
+  },
+  folderScrollContent: {
+    paddingBottom: 8,
+  },
   folderFilesContainer: {
     marginTop: 4,
+  },
+  folderLoadingMoreRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+  },
+  folderLoadingMoreText: {
+    fontSize: 13,
+    color: '#3B82F6',
+    fontWeight: '600',
+    marginLeft: 6,
+  },
+  loadMoreFolderBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 11,
+    marginHorizontal: 4,
+    marginVertical: 8,
+    backgroundColor: '#EFF6FF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+  },
+  loadMoreFolderBtnText: {
+    fontSize: 13,
+    color: '#1D4ED8',
+    fontWeight: '600',
+  },
+  folderAllLoadedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+  },
+  folderAllLoadedText: {
+    fontSize: 12,
+    color: '#10B981',
+    fontWeight: '600',
   },
   folderFileItem: {
     flexDirection: 'row',

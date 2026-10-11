@@ -7,13 +7,19 @@ export function extractTeraboxUrl(text) {
   return match ? match[0] : null;
 }
 
-export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip = false) {
+export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip = false, page = 1, limit = 5) {
   if (!baseUrl) {
     throw new Error('API server URL is not set. Open Settings and add your server URL.');
   }
 
   const endpoint = baseUrl.replace(/\/+$/, '');
-  const query = new URLSearchParams({ url, quality, from: 'app' });
+  const query = new URLSearchParams({ 
+    url, 
+    quality, 
+    from: 'app',
+    page: String(page || 1),
+    limit: String(limit || 5),
+  });
   if (isVip) {
     query.set('is_vip', 'true');
   }
@@ -124,6 +130,9 @@ export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip =
     isFolder: isFolderDetected,
     isFolderRestricted: Boolean(json.isFolderRestricted || data.isFolderRestricted),
     title: json.title || data.title || '',
+    totalFiles: json.totalFiles || data.totalFiles || (isFolderDetected ? (data.totalCount || rawItems.length) : 1),
+    hasMore: Boolean(json.hasMore || data.hasMore),
+    page: json.page || data.page || page,
     rawJson: json,
   };
 }
