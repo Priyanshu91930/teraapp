@@ -384,30 +384,32 @@ export default function HomeScreen({ navigation, route }) {
     const url = validate();
     if (!url) return;
 
-    // Show rewarded ad first ONLY for free users if available, then resolve
+    // Start API resolve immediately in parallel so it finishes while the user is watching the ad!
+    const resolvePromise = doResolve(url);
+
+    // Show rewarded ad concurrently ONLY for free users if available
     if (!isPremiumUser && rewardedInterstitialRef.current) {
       if (adLoaded) {
-        // Condition 1: Ad is ALREADY loaded -> Show immediately with 0 delay
+        // Condition 1: Ad is ALREADY loaded -> Show immediately with 0 delay while API resolves in background
         try {
-          console.log('Showing Rewarded Ad immediately before resolve...');
+          console.log('[HomeScreen] Showing Rewarded Ad immediately in parallel with API resolve...');
           const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
             AdEventType.CLOSED,
             () => {
               unsubClose();
               setAdLoaded(false);
               rewardedInterstitialRef.current?.load(); // preload next
-              doResolve(url);
             }
           );
           rewardedInterstitialRef.current.show();
-          return; // wait for ad to close
+          await resolvePromise;
+          return;
         } catch (err) {
-          console.log('Failed to show rewarded ad:', err);
+          console.log('[HomeScreen] Failed to show rewarded ad:', err);
         }
       } else {
-        // Condition 2: Ad is NOT loaded yet -> Show spinner & wait up to 2.5s for ad load
-        console.log('Ad not loaded yet, waiting up to 2.5s for ad load...');
-        setParsing(true);
+        // Condition 2: Ad is NOT loaded yet -> Wait up to 1.2s for ad load while API is already fetching in background
+        console.log('[HomeScreen] Ad not loaded yet, waiting up to 1.2s while API is already resolving...');
 
         const isAdShowAttempted = { current: false };
 
@@ -426,14 +428,14 @@ export default function HomeScreen({ navigation, route }) {
           unsubLoaded = rewardedInterstitialRef.current.addAdEventListener(
             RewardedAdEventType.LOADED,
             () => {
-              console.log('Rewarded Ad loaded during 2.5s wait window!');
+              console.log('[HomeScreen] Rewarded Ad loaded during wait window!');
               setAdLoaded(true);
               finish(true);
             }
           );
 
           timeoutId = setTimeout(() => {
-            console.log('1.2s wait window expired for Rewarded Ad. Proceeding with resolve...');
+            console.log('[HomeScreen] Wait window expired for Rewarded Ad. Proceeding...');
             finish(false);
           }, 1200);
         });
@@ -442,26 +444,27 @@ export default function HomeScreen({ navigation, route }) {
 
         if (adLoadedInTime && rewardedInterstitialRef.current) {
           try {
-            console.log('Showing Rewarded Ad after 2.5s wait window...');
+            console.log('[HomeScreen] Showing Rewarded Ad after wait window (API resolving in parallel)...');
             const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
               AdEventType.CLOSED,
               () => {
                 unsubClose();
                 setAdLoaded(false);
                 rewardedInterstitialRef.current?.load(); // preload next
-                doResolve(url);
               }
             );
             rewardedInterstitialRef.current.show();
-            return; // wait for ad to close
+            await resolvePromise;
+            return;
           } catch (err) {
-            console.log('Failed to show rewarded ad after wait:', err);
+            console.log('[HomeScreen] Failed to show rewarded ad after wait:', err);
           }
         }
       }
     }
-    // Direct resolve if premium or ad failed to load within 2.5s
-    await doResolve(url);
+
+    // Direct resolve wait if premium or ad failed to load
+    await resolvePromise;
   }
 
   async function doResolve(url) {
