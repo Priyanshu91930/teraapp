@@ -14,9 +14,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
+import BannerAdView from '../components/BannerAdView';
 import { AD_UNIT_IDS } from '../services/adConfig';
-import Screen from '../components/Screen';
 import { colors, radius, spacing } from '../theme';
 import { getHistory, removeHistoryItem } from '../services/storage';
 import { getStoredUser, checkIsPremium } from '../services/authService';
@@ -30,11 +31,12 @@ import {
   getDownloadMetadata,
 } from '../services/downloadManager';
 
-export default function DownloadScreen() {
+export default function DownloadScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [downloads, setDownloads] = useState([]);
   const [activeUpdates, setActiveUpdates] = useState({});
-  const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
-  const [bannerAdError, setBannerAdError] = useState(false);
+
+
   const [user, setUser] = useState(null);
 
   // Video player modal state
@@ -500,16 +502,27 @@ export default function DownloadScreen() {
 
   return (
     <View style={styles.container}>
+      <StatusBar style="light" />
       <LinearGradient
         colors={['#E5F2FF', '#F1E5FF']}
         style={StyleSheet.absoluteFillObject}
       />
-      <Screen style={styles.screenOverride}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Downloads</Text>
-          <Text style={styles.subtitle}>Manage your downloaded files and sharing</Text>
+      {/* Blue Top Header matching Settings */}
+      <View style={[styles.blueHeader, { paddingTop: insets.top + 6, height: 60 + insets.top }]}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => navigation?.navigate('Home')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Downloads</Text>
+          <View style={{ width: 38 }} />
         </View>
+      </View>
 
+      <View style={styles.contentWrap}>
         {downloads.length === 0 ? (
           <View style={styles.empty}>
             <View style={styles.emptyIconWrap}>
@@ -529,7 +542,7 @@ export default function DownloadScreen() {
             showsVerticalScrollIndicator={false}
           />
         )}
-      </Screen>
+      </View>
 
       <PlayerScreen
         visible={playerVisible}
@@ -541,29 +554,48 @@ export default function DownloadScreen() {
         isPremium={isPremiumUser}
       />
 
-      {/* Banner Ad - Disabled for Premium Users */}
-      {!isPremiumUser && !bannerAdError && (
-        <View style={styles.bannerAdContainer}>
-          <BannerAd
-            unitId={AD_UNIT_IDS.BANNER_3}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            onAdLoaded={() => {
-              setBannerAdLoaded(true);
-              setBannerAdError(false);
-            }}
-            onAdFailedToLoad={(error) => {
-              console.log('Banner Ad failed to load:', error.message);
-              setBannerAdError(true);
-            }}
-          />
-        </View>
-      )}
+      {/* Banner Ad - Bottom Banner */}
+      <BannerAdView
+        unitId={AD_UNIT_IDS.BANNER_3}
+        isPremium={isPremiumUser}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  blueHeader: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerCircleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  contentWrap: {
     flex: 1,
   },
   screenOverride: {
@@ -588,7 +620,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: spacing.md,
-    paddingTop: 0,
+    paddingTop: 14,
     paddingBottom: spacing.xl,
   },
   folderGroupCard: {

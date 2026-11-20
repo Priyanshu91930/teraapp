@@ -4,6 +4,23 @@ const USER_STORAGE_KEY = '@teraapp_user_profile';
 const TOKEN_STORAGE_KEY = '@teraapp_session_token';
 const API_BASE_URL = 'https://teraapi-six.vercel.app';
 
+const listeners = new Set();
+
+export function subscribeAuthChange(callback) {
+  listeners.add(callback);
+  return () => listeners.delete(callback);
+}
+
+function notifyAuthChange(user) {
+  listeners.forEach((cb) => {
+    try {
+      cb(user);
+    } catch (e) {
+      console.log('[AuthService] Listener error:', e);
+    }
+  });
+}
+
 export async function getStoredUser() {
   try {
     const json = await AsyncStorage.getItem(USER_STORAGE_KEY);
@@ -20,6 +37,7 @@ export async function setStoredUser(user) {
     } else {
       await AsyncStorage.removeItem(USER_STORAGE_KEY);
     }
+    notifyAuthChange(user || null);
   } catch (e) {}
 }
 
@@ -86,6 +104,7 @@ export async function logoutUser() {
     await AsyncStorage.removeItem(USER_STORAGE_KEY);
     await AsyncStorage.removeItem(TOKEN_STORAGE_KEY);
     await AsyncStorage.removeItem('@teraapp/history');
+    notifyAuthChange(null);
   } catch (e) {}
 }
 

@@ -13,14 +13,15 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Screen from '../components/Screen';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
 import { clearHistory, getHistory, removeHistoryItem, addHistoryItem, getSettings } from '../services/storage';
 import { resolveTeraboxLink } from '../services/api';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import BannerAdView from '../components/BannerAdView';
 import { AD_UNIT_IDS } from '../services/adConfig';
 import { getStoredUser, checkIsPremium } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
@@ -36,6 +37,7 @@ function formatDate(iso) {
 }
 
 export default function HistoryScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
   const [items, setItems] = useState([]);
   const [user, setUser] = useState(null);
   const [resolvingId, setResolvingId] = useState(null);
@@ -44,7 +46,6 @@ export default function HistoryScreen({ navigation }) {
   const [playerVisible, setPlayerVisible] = useState(false);
   const [playerSource, setPlayerSource] = useState(null);
   const [playerName, setPlayerName] = useState(null);
-  const [bannerAdError, setBannerAdError] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -182,29 +183,37 @@ export default function HistoryScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
+      <StatusBar style="light" />
       <LinearGradient
         colors={['#E5F2FF', '#F1E5FF']}
         style={StyleSheet.absoluteFillObject}
       />
-      <Screen style={styles.screenOverride}>
-        <View style={styles.header}>
-          <View style={styles.headerTextGroup}>
-            <Text style={styles.title}>History</Text>
-            <Text style={styles.subtitle}>
-              {user ? `Cloud Synced (${user.email})` : 'Your searched links & downloaded files'}
-            </Text>
-          </View>
+      {/* Blue Top Header matching Settings */}
+      <View style={[styles.blueHeader, { paddingTop: insets.top + 6, height: 60 + insets.top }]}>
+        <View style={styles.headerBar}>
+          <TouchableOpacity
+            style={styles.headerCircleBtn}
+            onPress={() => navigation?.navigate('Home')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="chevron-back" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>History</Text>
           {items.length > 0 ? (
             <TouchableOpacity
-              style={styles.clearBtn}
+              style={styles.headerCircleBtn}
               onPress={handleClear}
               activeOpacity={0.7}
             >
-              <Ionicons name="trash-bin-outline" size={16} color="#EF4444" />
-              <Text style={styles.clearBtnText}>Clear All</Text>
+              <Ionicons name="trash-outline" size={19} color="#FFFFFF" />
             </TouchableOpacity>
-          ) : null}
+          ) : (
+            <View style={{ width: 38 }} />
+          )}
         </View>
+      </View>
+
+      <View style={styles.contentWrap}>
 
         {items.length === 0 ? (
           <View style={styles.empty}>
@@ -305,7 +314,7 @@ export default function HistoryScreen({ navigation }) {
             }}
           />
         )}
-      </Screen>
+      </View>
 
       <PlayerScreen
         visible={playerVisible}
@@ -316,25 +325,62 @@ export default function HistoryScreen({ navigation }) {
         isPremium={isPremiumUser}
       />
 
-      {!isPremiumUser && !bannerAdError && (
-        <View style={styles.bannerContainer}>
-          <BannerAd
-            unitId={AD_UNIT_IDS.BANNER_4}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            onAdLoaded={() => setBannerAdError(false)}
-            onAdFailedToLoad={(error) => {
-              console.log('History Banner Ad failed to load:', error.message);
-              setBannerAdError(true);
-            }}
-          />
-        </View>
-      )}
+      <BannerAdView
+        unitId={AD_UNIT_IDS.BANNER_4}
+        isPremium={isPremiumUser}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  blueHeader: {
+    backgroundColor: '#3B82F6',
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  headerBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  headerCircleBtn: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  cloudSyncBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EFF6FF',
+    paddingVertical: 7,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#DBEAFE',
+    gap: 6,
+  },
+  cloudSyncText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#1D4ED8',
+  },
+  contentWrap: {
     flex: 1,
   },
   bannerContainer: {
@@ -385,7 +431,7 @@ const styles = StyleSheet.create({
   },
   list: {
     paddingHorizontal: 16,
-    paddingTop: 0,
+    paddingTop: 14,
     paddingBottom: 24,
   },
   card: {

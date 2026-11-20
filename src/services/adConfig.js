@@ -7,7 +7,7 @@ const USE_REAL_ADS = __DEV__ ? false : true;
 export const AD_UNIT_IDS = {
   // ── 5 REAL ADMOB BANNER AD UNITS ──
   BANNER_1: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/9519447114' : TestIds.ADAPTIVE_BANNER, // banner (Home Bottom)
-  BANNER_2: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/6521426258' : TestIds.ADAPTIVE_BANNER, // banner2 (Home Top)
+  BANNER_2: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/6521426258' : TestIds.ADAPTIVE_BANNER, // banner2 (Home Top - Adaptive Banner)
   BANNER_3: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/2377529080' : TestIds.ADAPTIVE_BANNER, // banner3 (Download Screen)
   BANNER_4: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/1544783392' : TestIds.ADAPTIVE_BANNER, // banner4 (History Screen)
   BANNER_5: USE_REAL_ADS ? 'ca-app-pub-9717309889631554/9016079302' : TestIds.ADAPTIVE_BANNER, // banner5 (Settings Screen)

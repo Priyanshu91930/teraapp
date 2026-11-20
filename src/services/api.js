@@ -7,7 +7,7 @@ export function extractTeraboxUrl(text) {
   return match ? match[0] : null;
 }
 
-export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip = false, page = 1, limit = 5) {
+export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip = false, page = 1, limit = 5, userEmail = null) {
   if (!baseUrl) {
     throw new Error('API server URL is not set. Open Settings and add your server URL.');
   }
@@ -31,13 +31,21 @@ export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip =
     'x-client-source': 'app'
   };
 
+  let finalEmail = userEmail;
   try {
     const { getStoredUser } = await import('./authService');
     const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
-    const user = await getStoredUser();
+    if (!finalEmail) {
+      const user = await getStoredUser();
+      if (user && user.email) {
+        finalEmail = user.email;
+      }
+    }
     const token = await AsyncStorage.getItem('@teraapp_session_token');
-    if (user && user.email) {
-      headers['x-user-email'] = user.email;
+    if (finalEmail) {
+      headers['x-user-email'] = finalEmail;
+      query.set('email', finalEmail);
+      query.set('userEmail', finalEmail);
     }
     if (token) {
       headers['x-user-token'] = token;

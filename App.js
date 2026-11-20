@@ -1,20 +1,33 @@
-import React, { useEffect } from 'react';
-import { TouchableOpacity } from 'react-native';
+import React, { useEffect, useState, useCallback } from 'react';
+import { View, StyleSheet, TouchableOpacity } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { AppOpenAd, AdEventType } from 'react-native-google-mobile-ads';
+import * as SplashScreen from 'expo-splash-screen';
+import mobileAds, { AppOpenAd, AdEventType } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from './src/services/adConfig';
-import { getStoredUser, checkIsPremium } from './src/services/authService';
-import { setupNotificationChannel, requestNotificationPermission, setupFirebaseRemoteNotifications } from './src/services/notificationManager';
+import {
+  getStoredUser,
+  checkIsPremium,
+  subscribeAuthChange,
+} from './src/services/authService';
+import {
+  setupNotificationChannel,
+  requestNotificationPermission,
+  setupFirebaseRemoteNotifications,
+} from './src/services/notificationManager';
 import { checkForAppUpdates } from './src/services/updateChecker';
 
 import HomeScreen from './src/screens/HomeScreen';
 import DownloadScreen from './src/screens/DownloadScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import LoginScreen from './src/screens/LoginScreen';
+
+// Keep native splash screen visible while app checks persistent authentication state
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 const Tab = createBottomTabNavigator();
 
@@ -43,6 +56,7 @@ function AppTabs() {
 
   return (
     <Tab.Navigator
+      detachInactiveScreens={false}
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarActiveTintColor: '#3B82F6',
@@ -94,7 +108,60 @@ function AppTabs() {
 }
 
 export default function App() {
+  const [isAuthReady, setIsAuthReady] = useState(false);
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // 1. Initial Auth Check with Splash Screen
   useEffect(() => {
+    let isMounted = true;
+
+    async function checkAuthOnLaunch() {
+      try {
+        const stored = await getStoredUser();
+        if (isMounted) {
+          if (stored && stored.email) {
+            setCurrentUser(stored);
+          } else {
+            setCurrentUser(null);
+          }
+        }
+      } catch (err) {
+        console.log('[App] Auth init error:', err);
+      } finally {
+        if (isMounted) {
+          setIsAuthReady(true);
+          // Hide native splash screen smoothly once auth check is complete
+          SplashScreen.hideAsync().catch(() => {});
+        }
+      }
+    }
+
+    checkAuthOnLaunch();
+
+    // Subscribe to auth changes (login / sign out) across all screens
+    const unsubscribeAuth = subscribeAuthChange((user) => {
+      if (isMounted) {
+        setCurrentUser(user || null);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribeAuth();
+    };
+  }, []);
+
+  // 2. Services Initialization (Notifications & App Open Ads)
+  useEffect(() => {
+    mobileAds()
+      .initialize()
+      .then((adapterStatuses) => {
+        console.log('[AdMob] SDK initialized successfully:', adapterStatuses);
+      })
+      .catch((err) => {
+        console.log('[AdMob] SDK init error:', err);
+      });
+
     let appOpenAd = null;
     let unsubLoaded = null;
     let unsubError = null;
@@ -102,6 +169,7 @@ export default function App() {
     const loadAppOpenAd = async () => {
       try {
         const user = await getStoredUser();
+        if (!user || !user.email) return; // Do not show open ad on login screen
         const isPremium = checkIsPremium(user);
         if (isPremium) {
           console.log('[AdMob] VIP User - Skipping App Open Ad');
@@ -150,6 +218,22 @@ export default function App() {
     };
   }, []);
 
+  // While splash screen is checking stored auth, render blank background
+  if (!isAuthReady) {
+    return <View style={styles.splashPlaceholder} />;
+  }
+
+  // Mandatory Login Gate: If no logged in user, show LoginScreen
+  if (!currentUser || !currentUser.email) {
+    return (
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <LoginScreen onLoginSuccess={(user) => setCurrentUser(user)} />
+      </SafeAreaProvider>
+    );
+  }
+
+  // User is authenticated: Render main app tabs
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={theme}>
@@ -159,3 +243,10 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  splashPlaceholder: {
+    flex: 1,
+    backgroundColor: '#FFFFFF',
+  },
+});

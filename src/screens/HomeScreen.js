@@ -22,7 +22,7 @@ import { StatusBar } from 'expo-status-bar';
 import * as Clipboard from 'expo-clipboard';
 import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
-import { BannerAd, BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
+import { BannerAdSize, RewardedAd, RewardedAdEventType, AdEventType } from 'react-native-google-mobile-ads';
 import { AD_UNIT_IDS } from '../services/adConfig';
 import { colors, radius, spacing } from '../theme';
 import { extractTeraboxUrl, resolveTeraboxLink, trackActivity } from '../services/api';
@@ -33,6 +33,7 @@ import { checkAndPromptInAppReview } from '../services/storeReview';
 import { getStoredUser, fetchFreshUserStatus, checkIsPremium } from '../services/authService';
 import PlayerScreen from './PlayerScreen';
 import UpdateBannerTicker from '../components/UpdateBannerTicker';
+import BannerAdView from '../components/BannerAdView';
 import {
   startDownload,
   pauseDownload,
@@ -164,20 +165,6 @@ export default function HomeScreen({ navigation, route }) {
   const [adLoaded, setAdLoaded] = useState(false);
   const [showMirrors, setShowMirrors] = useState(false);
   const [showShareSheet, setShowShareSheet] = useState(false);
-  const [bannerAdLoaded, setBannerAdLoaded] = useState(false);
-  const [topBannerAdLoaded, setTopBannerAdLoaded] = useState(false);
-  const [showTopBanner, setShowTopBanner] = useState(false);
-  const [bannerAdError, setBannerAdError] = useState(false);
-  const [topBannerAdError, setTopBannerAdError] = useState(false);
-
-  // Stagger Top Banner Ad request by 2.5s to prevent simultaneous AdMob collision with Bottom Banner
-  useEffect(() => {
-    if (isPremiumUser) return;
-    const timer = setTimeout(() => {
-      setShowTopBanner(true);
-    }, 2500);
-    return () => clearTimeout(timer);
-  }, [isPremiumUser]);
 
   // User Auth & Subscription Modal states
   const [user, setUser] = useState(null);
@@ -218,7 +205,7 @@ export default function HomeScreen({ navigation, route }) {
     const unsubscribeLoaded = rewardedInterstitialRef.current.addAdEventListener(
       RewardedAdEventType.LOADED,
       () => {
-        console.log('Rewarded Interstitial Ad loaded.');
+        console.log('[HomeScreen] Rewarded Interstitial Ad loaded successfully.');
         setAdLoaded(true);
       }
     );
@@ -226,7 +213,7 @@ export default function HomeScreen({ navigation, route }) {
     const unsubscribeEarned = rewardedInterstitialRef.current.addAdEventListener(
       RewardedAdEventType.EARNED_REWARD,
       (reward) => {
-        console.log('User earned reward of ', reward);
+        console.log('[HomeScreen] User earned reward:', reward);
       }
     );
 
@@ -234,17 +221,30 @@ export default function HomeScreen({ navigation, route }) {
       AdEventType.CLOSED,
       () => {
         setAdLoaded(false);
-        console.log('Rewarded Interstitial Ad closed, pre-loading next one...');
-        rewardedInterstitialRef.current.load();
+        console.log('[HomeScreen] Rewarded Ad closed, pre-loading next one...');
+        try {
+          rewardedInterstitialRef.current?.load();
+        } catch (e) {}
       }
     );
 
-    rewardedInterstitialRef.current.load();
+    const unsubscribeError = rewardedInterstitialRef.current.addAdEventListener(
+      AdEventType.ERROR,
+      (err) => {
+        console.log('[HomeScreen] Rewarded Ad load failed:', err?.message || err);
+        setAdLoaded(false);
+      }
+    );
+
+    try {
+      rewardedInterstitialRef.current.load();
+    } catch (e) {}
 
     return () => {
       unsubscribeLoaded();
       unsubscribeEarned();
       unsubscribeClosed();
+      unsubscribeError();
     };
   }, [isPremiumUser]);
   // Title subtle glow/pulse animation
@@ -338,26 +338,30 @@ export default function HomeScreen({ navigation, route }) {
   }
 
   const showAdBeforeAction = (actionCallback) => {
+    console.log('[HomeScreen] showAdBeforeAction called. isPremiumUser:', isPremiumUser, 'adLoaded:', adLoaded);
     if (isPremiumUser || !rewardedInterstitialRef.current) {
+      console.log('[HomeScreen] Skipping ad (Premium or no ref)');
       actionCallback();
       return;
     }
 
-    if (adLoaded) {
-      try {
-        console.log('[HomeScreen] Showing Rewarded Ad before button action...');
-        let executed = false;
-        const safeExecute = () => {
-          if (!executed) {
-            executed = true;
-            actionCallback();
-          }
-        };
+    let executed = false;
+    const safeExecute = () => {
+      if (!executed) {
+        executed = true;
+        actionCallback();
+      }
+    };
 
+    const isAdReady = adLoaded || rewardedInterstitialRef.current?.loaded;
+
+    if (isAdReady) {
+      try {
+        console.log('[HomeScreen] Ad is already loaded! Showing Rewarded Ad now...');
         const timer = setTimeout(() => {
-          console.warn('[HomeScreen] Ad timeout fallback triggered');
+          console.warn('[HomeScreen] Ad timeout fallback triggered (2s)');
           safeExecute();
-        }, 1500);
+        }, 2000);
 
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
           AdEventType.CLOSED,
@@ -365,7 +369,7 @@ export default function HomeScreen({ navigation, route }) {
             clearTimeout(timer);
             try { unsubClose(); } catch (e) {}
             setAdLoaded(false);
-            rewardedInterstitialRef.current?.load();
+            try { rewardedInterstitialRef.current?.load(); } catch (e) {}
             safeExecute();
           }
         );
@@ -373,98 +377,84 @@ export default function HomeScreen({ navigation, route }) {
         return;
       } catch (err) {
         console.log('[HomeScreen] Failed to show rewarded ad:', err);
-        actionCallback();
+        safeExecute();
         return;
       }
     }
-    actionCallback();
+
+    // If ad is not loaded yet (e.g. user tapped button right after launching app),
+    // wait up to 2.5s for ad to finish loading instead of skipping it!
+    console.log('[HomeScreen] Ad not loaded yet. Waiting up to 2.5s for ad to load...');
+
+    let waitTimer = null;
+    let unsubLoaded = null;
+    let unsubError = null;
+
+    const cleanupWait = () => {
+      if (waitTimer) clearTimeout(waitTimer);
+      if (unsubLoaded) { try { unsubLoaded(); } catch (e) {} }
+      if (unsubError) { try { unsubError(); } catch (e) {} }
+    };
+
+    unsubLoaded = rewardedInterstitialRef.current.addAdEventListener(
+      RewardedAdEventType.LOADED,
+      () => {
+        cleanupWait();
+        console.log('[HomeScreen] Ad finished loading during wait window! Showing now...');
+        setAdLoaded(true);
+
+        const timer = setTimeout(() => {
+          safeExecute();
+        }, 2000);
+
+        const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.CLOSED,
+          () => {
+            clearTimeout(timer);
+            try { unsubClose(); } catch (e) {}
+            setAdLoaded(false);
+            try { rewardedInterstitialRef.current?.load(); } catch (e) {}
+            safeExecute();
+          }
+        );
+
+        try {
+          rewardedInterstitialRef.current.show();
+        } catch (e) {
+          console.log('[HomeScreen] Failed to show ad after wait:', e);
+          safeExecute();
+        }
+      }
+    );
+
+    unsubError = rewardedInterstitialRef.current.addAdEventListener(
+      AdEventType.ERROR,
+      (err) => {
+        cleanupWait();
+        console.log('[HomeScreen] Ad error during wait window:', err?.message || err);
+        safeExecute();
+      }
+    );
+
+    try {
+      rewardedInterstitialRef.current.load();
+    } catch (e) {}
+
+    waitTimer = setTimeout(() => {
+      cleanupWait();
+      console.log('[HomeScreen] Ad wait window expired (2.5s). Proceeding with action...');
+      safeExecute();
+    }, 2500);
   };
 
   async function handleResolve() {
     const url = validate();
     if (!url) return;
 
-    // Start API resolve immediately in parallel so it finishes while the user is watching the ad!
-    const resolvePromise = doResolve(url);
-
-    // Show rewarded ad concurrently ONLY for free users if available
-    if (!isPremiumUser && rewardedInterstitialRef.current) {
-      if (adLoaded) {
-        // Condition 1: Ad is ALREADY loaded -> Show immediately with 0 delay while API resolves in background
-        try {
-          console.log('[HomeScreen] Showing Rewarded Ad immediately in parallel with API resolve...');
-          const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
-            AdEventType.CLOSED,
-            () => {
-              unsubClose();
-              setAdLoaded(false);
-              rewardedInterstitialRef.current?.load(); // preload next
-            }
-          );
-          rewardedInterstitialRef.current.show();
-          await resolvePromise;
-          return;
-        } catch (err) {
-          console.log('[HomeScreen] Failed to show rewarded ad:', err);
-        }
-      } else {
-        // Condition 2: Ad is NOT loaded yet -> Wait up to 1.2s for ad load while API is already fetching in background
-        console.log('[HomeScreen] Ad not loaded yet, waiting up to 1.2s while API is already resolving...');
-
-        const isAdShowAttempted = { current: false };
-
-        const waitForAdPromise = new Promise((resolve) => {
-          let timeoutId = null;
-          let unsubLoaded = null;
-
-          const finish = (wasLoaded) => {
-            if (isAdShowAttempted.current) return;
-            isAdShowAttempted.current = true;
-            if (timeoutId) clearTimeout(timeoutId);
-            if (unsubLoaded) unsubLoaded();
-            resolve(wasLoaded);
-          };
-
-          unsubLoaded = rewardedInterstitialRef.current.addAdEventListener(
-            RewardedAdEventType.LOADED,
-            () => {
-              console.log('[HomeScreen] Rewarded Ad loaded during wait window!');
-              setAdLoaded(true);
-              finish(true);
-            }
-          );
-
-          timeoutId = setTimeout(() => {
-            console.log('[HomeScreen] Wait window expired for Rewarded Ad. Proceeding...');
-            finish(false);
-          }, 1200);
-        });
-
-        const adLoadedInTime = await waitForAdPromise;
-
-        if (adLoadedInTime && rewardedInterstitialRef.current) {
-          try {
-            console.log('[HomeScreen] Showing Rewarded Ad after wait window (API resolving in parallel)...');
-            const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
-              AdEventType.CLOSED,
-              () => {
-                unsubClose();
-                setAdLoaded(false);
-                rewardedInterstitialRef.current?.load(); // preload next
-              }
-            );
-            rewardedInterstitialRef.current.show();
-            await resolvePromise;
-            return;
-          } catch (err) {
-            console.log('[HomeScreen] Failed to show rewarded ad after wait:', err);
-          }
-        }
-      }
-    }
-
-    // Direct resolve wait if premium or ad failed to load
-    await resolvePromise;
+    setParsing(true);
+    showAdBeforeAction(() => {
+      doResolve(url);
+    });
   }
 
   async function doResolve(url) {
@@ -482,7 +472,8 @@ export default function HomeScreen({ navigation, route }) {
 
     try {
       const s = settings || await getSettings();
-      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser, 1, 5);
+      const currentUserEmail = user?.email || (await getStoredUser())?.email || null;
+      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser, 1, 5, currentUserEmail);
       
       const totalCount = data.totalFiles || (data.isFolder ? (data.totalCount || 0) : 0) || (data.list && data.list.length > 1 ? data.list.length : 1);
       const folderRawTitle = data.title ? data.title.split('/').filter(Boolean).pop() : '';
@@ -599,7 +590,8 @@ export default function HomeScreen({ navigation, route }) {
       const s = settings || await getSettings();
       const nextPage = (result.currentPage || 1) + 1;
       console.log(`[Folder Pagination] Fetching page ${nextPage} for folder: ${result.name}`);
-      const nextData = await resolveTeraboxLink(s.apiBaseUrl, result.shareUrl, s.downloadQuality, isPremiumUser, nextPage, 5);
+      const currentUserEmail = user?.email || (await getStoredUser())?.email || null;
+      const nextData = await resolveTeraboxLink(s.apiBaseUrl, result.shareUrl, s.downloadQuality, isPremiumUser, nextPage, 5, currentUserEmail);
 
       const nextRawList = Array.isArray(nextData.list) && nextData.list.length > 0 ? nextData.list : [];
       const nextFormattedFiles = nextRawList.map(item => ({
@@ -914,7 +906,8 @@ export default function HomeScreen({ navigation, route }) {
       if (shareUrl && s && s.apiBaseUrl) {
         try {
           console.log('[Watch] Auto re-resolving fresh signature link for instant playback...');
-          const freshData = await resolveTeraboxLink(s.apiBaseUrl, shareUrl, s.downloadQuality, isPremiumUser);
+          const currentUserEmail = user?.email || (await getStoredUser())?.email || null;
+          const freshData = await resolveTeraboxLink(s.apiBaseUrl, shareUrl, s.downloadQuality, isPremiumUser, 1, 5, currentUserEmail);
           if (freshData && (freshData.dlink || freshData.downloadUrl)) {
             currentResult = freshData;
           }
@@ -1134,23 +1127,14 @@ export default function HomeScreen({ navigation, route }) {
             </View>
           </View>
 
-          {/* Banner Ad 2 - Placed above Supported TeraBox Formats (Staggered by 2.5s to prevent AdMob collision) */}
-          {!isPremiumUser && showTopBanner && !topBannerAdError && (
-            <View style={[styles.bannerAdContainer, { marginVertical: 8, borderRadius: 8 }]}>
-              <BannerAd
-                unitId={AD_UNIT_IDS.BANNER_2}
-                size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-                onAdLoaded={() => {
-                  setTopBannerAdLoaded(true);
-                  setTopBannerAdError(false);
-                }}
-                onAdFailedToLoad={(error) => {
-                  console.log('Top Banner Ad failed to load:', error.message);
-                  setTopBannerAdError(true);
-                }}
-              />
-            </View>
-          )}
+          {/* Banner Ad 2 - Placed above Supported TeraBox Formats (Adaptive Banner matching bottom banner) */}
+          <BannerAdView
+            unitId={AD_UNIT_IDS.BANNER_2}
+            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
+            isPremium={isPremiumUser}
+            delay={1200}
+            containerStyle={styles.topBannerAdContainer}
+          />
 
           {/* Supported Formats section */}
           <View style={styles.formatsCard}>
@@ -1495,23 +1479,11 @@ export default function HomeScreen({ navigation, route }) {
         }}
       />
 
-      {/* Banner Ad - Disabled for Premium Users */}
-      {!isPremiumUser && !bannerAdError && (
-        <View style={styles.bannerAdContainer}>
-          <BannerAd
-            unitId={AD_UNIT_IDS.BANNER_1}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            onAdLoaded={() => {
-              setBannerAdLoaded(true);
-              setBannerAdError(false);
-            }}
-            onAdFailedToLoad={(error) => {
-              console.log('Banner Ad failed to load:', error.message);
-              setBannerAdError(true);
-            }}
-          />
-        </View>
-      )}
+      {/* Banner Ad - Bottom Banner */}
+      <BannerAdView
+        unitId={AD_UNIT_IDS.BANNER_1}
+        isPremium={isPremiumUser}
+      />
     </View>
   );
 }
@@ -2070,6 +2042,13 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: '#E2E8F0',
     paddingVertical: 4,
+  },
+  topBannerAdContainer: {
+    marginVertical: 8,
+    borderRadius: 8,
+    borderTopWidth: 0,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
   },
   formatsCard: {
     backgroundColor: 'rgba(255, 255, 255, 0.9)',

@@ -1,6 +1,6 @@
 {
   "name": "teraapp",
-  "version": "3.3.0",
+  "version": "3.3.4",
   "main": "index.js",
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",

@@ -29,7 +29,7 @@ import {
   subscribeNotificationUpdates,
 } from '../services/notificationStorage';
 import { openDirectPlayStorePage } from '../services/storeReview';
-import { BannerAd, BannerAdSize } from 'react-native-google-mobile-ads';
+import BannerAdView from '../components/BannerAdView';
 import { AD_UNIT_IDS } from '../services/adConfig';
 
 GoogleSignin.configure({
@@ -174,7 +174,6 @@ export default function SettingsScreen({ navigation }) {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loggingIn, setLoggingIn] = useState(false);
-  const [bannerAdError, setBannerAdError] = useState(false);
 
   const loadNotifications = useCallback(async () => {
     const list = await getInAppNotifications();
@@ -709,19 +708,10 @@ export default function SettingsScreen({ navigation }) {
         onClose={() => setShowAnnouncementsModal(false)}
       />
 
-      {!isPremiumUser && !bannerAdError && (
-        <View style={styles.bannerContainer}>
-          <BannerAd
-            unitId={AD_UNIT_IDS.BANNER_5}
-            size={BannerAdSize.ANCHORED_ADAPTIVE_BANNER}
-            onAdLoaded={() => setBannerAdError(false)}
-            onAdFailedToLoad={(error) => {
-              console.log('Settings Banner Ad failed to load:', error.message);
-              setBannerAdError(true);
-            }}
-          />
-        </View>
-      )}
+      <BannerAdView
+        unitId={AD_UNIT_IDS.BANNER_5}
+        isPremium={isPremiumUser}
+      />
     </View>
   );
 }
