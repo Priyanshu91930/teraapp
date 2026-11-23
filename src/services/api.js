@@ -1,3 +1,6 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStoredUser } from './authService';
+
 const TERABOX_PATTERN = /(https?:\/\/)?(www\.)?([a-zA-Z0-9-]+\.[a-zA-Z0-9.-]+)\/s\/([A-Za-z0-9_-]+)/;
 
 export function extractTeraboxUrl(text) {
@@ -33,25 +36,32 @@ export async function resolveTeraboxLink(baseUrl, url, quality = 'auto', isVip =
 
   let finalEmail = userEmail;
   try {
-    const { getStoredUser } = await import('./authService');
-    const AsyncStorage = (await import('@react-native-async-storage/async-storage')).default;
     if (!finalEmail) {
-      const user = await getStoredUser();
-      if (user && user.email) {
-        finalEmail = user.email;
+      const stored = await getStoredUser();
+      if (stored && stored.email) {
+        finalEmail = stored.email;
       }
     }
+  } catch (err) {
+    console.log('[api] Error reading stored user:', err);
+  }
+
+  if (finalEmail) {
+    const cleanEmail = String(finalEmail).toLowerCase().trim();
+    headers['x-user-email'] = cleanEmail;
+    query.set('email', cleanEmail);
+    query.set('userEmail', cleanEmail);
+  }
+
+  try {
     const token = await AsyncStorage.getItem('@teraapp_session_token');
-    if (finalEmail) {
-      headers['x-user-email'] = finalEmail;
-      query.set('email', finalEmail);
-      query.set('userEmail', finalEmail);
-    }
     if (token) {
       headers['x-user-token'] = token;
       headers['Authorization'] = `Bearer ${token}`;
     }
-  } catch (e) {}
+  } catch (err) {
+    console.log('[api] Error reading session token:', err);
+  }
 
   if (isVip) {
     headers['x-user-tier'] = 'premium';
