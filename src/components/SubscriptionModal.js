@@ -476,32 +476,6 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                 )}
               </LinearGradient>
             </TouchableOpacity>
-
-            {/* Google Play AutoPay Trust & Subscription Management Notice */}
-            <View style={styles.autoPayNotice}>
-              <View style={styles.autoPayRow}>
-                <Ionicons name="repeat" size={16} color="#0284C7" />
-                <Text style={styles.autoPayTitle}>Google Play AutoPay Supported</Text>
-              </View>
-              <Text style={styles.autoPayDesc}>
-                Pay via UPI AutoPay (Google Pay, PhonePe, Paytm), Credit/Debit Card or NetBanking. Automatically renews until cancelled.
-              </Text>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                style={styles.manageSubLink}
-                onPress={() => {
-                  Linking.openURL('https://play.google.com/store/account/subscriptions').catch(() => {
-                    Alert.alert(
-                      'Manage Subscriptions',
-                      'Open Google Play Store ➡️ Profile ➡️ Payments & subscriptions to manage your AutoPay.'
-                    );
-                  });
-                }}
-              >
-                <Text style={styles.manageSubText}>Manage or Cancel Subscriptions in Google Play</Text>
-                <Ionicons name="open-outline" size={13} color="#2563EB" />
-              </TouchableOpacity>
-            </View>
           </ScrollView>
         </View>
       </View>
@@ -655,45 +629,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
-  },
-  autoPayNotice: {
-    backgroundColor: '#F0F9FF',
-    borderRadius: 14,
-    padding: 12,
-    marginTop: 14,
-    marginBottom: 6,
-    borderWidth: 1,
-    borderColor: '#BAE6FD',
-  },
-  autoPayRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginBottom: 4,
-  },
-  autoPayTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: '#0369A1',
-  },
-  autoPayDesc: {
-    fontSize: 11.5,
-    color: '#0C4A6E',
-    lineHeight: 16,
-  },
-  manageSubLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    marginTop: 8,
-    paddingTop: 6,
-    borderTopWidth: 1,
-    borderTopColor: '#E0F2FE',
-  },
-  manageSubText: {
-    fontSize: 11.5,
-    fontWeight: '600',
-    color: '#2563EB',
-    textDecorationLine: 'underline',
   },
 });
