@@ -8,6 +8,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -36,9 +37,9 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       id: 'weekly',
       sku: 'weekly_pass',
       name: 'Weekly Pass',
-      duration: '7 Days Access',
+      duration: 'Auto-renews weekly',
       badge: null,
-      desc: 'Ideal for short-term fast downloads',
+      desc: 'UPI AutoPay & Cards • Cancel anytime',
       heading: '✨ What You Get with Premium (Weekly):',
       features: [
         { icon: 'time-outline', color: '#6366F1', text: '7 Days Unlimited VIP Access' },
@@ -53,9 +54,9 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       id: 'monthly',
       sku: 'monthly_pro',
       name: 'Monthly Pro',
-      duration: '30 Days Access',
+      duration: 'Auto-renews monthly',
       badge: 'MOST POPULAR',
-      desc: 'Unlimited speed + App, Web & Bot Access',
+      desc: 'UPI AutoPay & Cards • Cancel anytime',
       heading: '✨ What You Get with Premium (Monthly):',
       features: [
         { icon: 'calendar-outline', color: '#F59E0B', text: '30 Days Full Access on App, Web & Bot' },
@@ -70,9 +71,9 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       id: 'yearly',
       sku: 'yearly_vip',
       name: 'Yearly VIP',
-      duration: '365 Days Access',
+      duration: 'Auto-renews yearly',
       badge: 'SAVE 75%',
-      desc: 'Best value for frequent downloaders',
+      desc: 'UPI AutoPay & Cards • Cancel anytime',
       heading: '✨ What You Get with Premium (Yearly):',
       features: [
         { icon: 'diamond-outline', color: '#10B981', text: '365 Days Uninterrupted VIP Membership' },
@@ -100,10 +101,22 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
           const receipt = purchase?.transactionReceipt || purchase?.purchaseToken;
           if (receipt) {
             await verifyAndActivatePurchase(receipt, purchase.productId);
-            // ALWAYS consume in-app purchase token on Google Play Store so user can re-purchase when plan expires!
-            await finishTransaction({ purchase, isConsumable: true }).catch((err) => {
-              console.log('[IAP finishTransaction warning]:', err?.message);
-            });
+
+            // Determine if subscription or one-time in-app product
+            const storeProd = (subscriptionsList || []).find(
+              (p) => p && (p.id === purchase.productId || p.productId === purchase.productId || p.sku === purchase.productId)
+            );
+            const isSub = purchase?.type === 'subs' || storeProd?.type === 'subs';
+
+            // IMPORTANT: Subscriptions must NOT be consumed (isConsumable: false) so Google Play AutoPay continues recurring!
+            // In-app one-time products are consumed (isConsumable: true) so user can repurchase upon expiration.
+            try {
+              await finishTransaction({ purchase, isConsumable: !isSub });
+              console.log(`[IAP finishTransaction] Successfully acknowledged with isConsumable=${!isSub}`);
+            } catch (finishErr) {
+              console.log('[IAP finishTransaction primary warning, trying fallback]:', finishErr?.message);
+              await finishTransaction({ purchase, isConsumable: !!isSub }).catch(() => {});
+            }
           }
         });
 
@@ -123,7 +136,7 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         }
 
         if (result && isMounted) {
-          // Clear any stuck unconsumed purchases from Google Play Store so user is never blocked by E_ALREADY_OWNED
+          // Clear any stuck unconsumed one-time purchases from Google Play Store
           try {
             if (typeof flushFailedPurchasesCachedAsPendingAndroid === 'function') {
               await flushFailedPurchasesCachedAsPendingAndroid().catch(() => {});
@@ -131,9 +144,10 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             if (typeof getAvailablePurchases === 'function') {
               const available = await getAvailablePurchases().catch(() => []);
               if (Array.isArray(available) && available.length > 0) {
-                console.log('[IAP Cleanup] Clearing stuck unconsumed purchases from Google Play:', available.length);
+                console.log('[IAP Cleanup] Checking available purchases from Google Play:', available.length);
                 for (const p of available) {
-                  await finishTransaction({ purchase: p, isConsumable: true }).catch(() => {});
+                  // Acknowledge without consuming so subscriptions stay active
+                  await finishTransaction({ purchase: p, isConsumable: false }).catch(() => {});
                 }
               }
             }
@@ -141,14 +155,38 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             console.log('[IAP Cleanup Warning]:', cleanErr?.message);
           }
 
-          console.log('[IAP Init] Querying Play Store Products:', SKUS);
-          const prods = await fetchProducts({ skus: SKUS, type: 'in-app' }).catch((err) => {
-            console.log('[IAP Init Warning] fetchProducts failed:', err?.message || err);
-            return [];
-          });
+          console.log('[IAP Init] Querying Play Store Subscriptions & In-App SKUs:', SKUS);
+          let allProds = [];
 
-          if (isMounted && prods && Array.isArray(prods) && prods.length > 0) {
-            setSubscriptionsList(prods);
+          // 1. Fetch recurring subscriptions (AutoPay)
+          try {
+            const subs = await fetchProducts({ skus: SKUS, type: 'subs' }).catch(() => []);
+            if (Array.isArray(subs) && subs.length > 0) {
+              console.log('[IAP Init] Fetched subscriptions (AutoPay):', subs.map((s) => s?.id || s?.productId));
+              allProds.push(...subs);
+            }
+          } catch (subErr) {
+            console.log('[IAP Init] fetchProducts(subs) notice:', subErr?.message);
+          }
+
+          // 2. Fetch in-app products (fallback/hybrid)
+          try {
+            const inapps = await fetchProducts({ skus: SKUS, type: 'in-app' }).catch(() => []);
+            if (Array.isArray(inapps) && inapps.length > 0) {
+              console.log('[IAP Init] Fetched in-app products:', inapps.map((s) => s?.id || s?.productId));
+              for (const item of inapps) {
+                const itemId = item?.id || item?.productId || item?.sku;
+                if (!allProds.some((p) => (p?.id || p?.productId || p?.sku) === itemId)) {
+                  allProds.push(item);
+                }
+              }
+            }
+          } catch (inappErr) {
+            console.log('[IAP Init] fetchProducts(in-app) notice:', inappErr?.message);
+          }
+
+          if (isMounted && allProds.length > 0) {
+            setSubscriptionsList(allProds);
           }
         }
       } catch (e) {
@@ -243,16 +281,54 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
 
       setLoading(true);
 
-      // Launch Google Play Store Payment Sheet
-      console.log('[IAP Action] Launching Google Play Store requestPurchase for SKU:', sku);
+      const storeProd = (subscriptionsList || []).find(
+        (p) => p && (p.id === sku || p.productId === sku || p.sku === sku)
+      );
+
+      // Check if this product has Google Play Subscription offers (AutoPay)
+      const offers = storeProd?.subscriptionOffers;
+      const firstOffer = Array.isArray(offers) && offers.length > 0 ? offers[0] : null;
+      const offerToken = firstOffer?.offerTokenAndroid || firstOffer?.offerToken;
+      const isSub = storeProd?.type === 'subs' || !!offerToken;
+
+      console.log('[IAP Action] Launching Google Play Payment Sheet for SKU:', sku, {
+        isSub,
+        hasOfferToken: !!offerToken,
+      });
+
       try {
-        await requestPurchase({
-          type: 'in-app',
-          request: {
-            google: { skus: [sku] },
-            apple: { sku: sku },
-          },
-        });
+        if (isSub) {
+          // Launch Google Play Recurring Subscription (UPI AutoPay / Cards)
+          const googleReq = { skus: [sku] };
+          if (offerToken) {
+            googleReq.subscriptionOffers = [{ sku, offerToken }];
+          }
+          await requestPurchase({
+            type: 'subs',
+            request: {
+              google: googleReq,
+              apple: { sku },
+            },
+          });
+        } else {
+          // Launch as standard purchase or fallback
+          await requestPurchase({
+            type: 'subs',
+            request: {
+              google: { skus: [sku] },
+              apple: { sku },
+            },
+          }).catch(async (subFallbackErr) => {
+            console.log('[IAP Action] Subs request fallback to in-app:', subFallbackErr?.message);
+            await requestPurchase({
+              type: 'in-app',
+              request: {
+                google: { skus: [sku] },
+                apple: { sku },
+              },
+            });
+          });
+        }
       } catch (reqErr) {
         setLoading(false);
         console.log('[IAP Action Error] requestPurchase Exception:', JSON.stringify(reqErr || {}));
@@ -260,21 +336,21 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
         const msg = reqErr?.message || reqErr?.debugMessage || '';
 
         if (code === 'E_ALREADY_OWNED' || msg.toLowerCase().includes('already own')) {
-          console.log('[IAP Action] Item already owned on Play Store. Clearing stuck purchase lock...');
+          console.log('[IAP Action] Item already owned on Play Store. Acknowledging and syncing...');
           try {
             if (typeof getAvailablePurchases === 'function') {
               const available = await getAvailablePurchases().catch(() => []);
               if (Array.isArray(available) && available.length > 0) {
                 for (const p of available) {
-                  await finishTransaction({ purchase: p, isConsumable: true }).catch(() => {});
+                  await finishTransaction({ purchase: p, isConsumable: false }).catch(() => {});
                 }
               }
             }
           } catch (e) {}
 
           Alert.alert(
-            '🔄 Purchase Sync',
-            'Your previous purchase is being verified and renewed. Please tap Pay again in a moment.',
+            '🔄 Active Subscription Found',
+            'Your Google Play subscription was synced. If you want to change plans, please manage it in Google Play Store.',
             [{ text: 'OK' }]
           );
         } else if (code === 'E_USER_CANCELLED') {
@@ -392,6 +468,32 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
                 )}
               </LinearGradient>
             </TouchableOpacity>
+
+            {/* Google Play AutoPay Trust & Subscription Management Notice */}
+            <View style={styles.autoPayNotice}>
+              <View style={styles.autoPayRow}>
+                <Ionicons name="repeat" size={16} color="#0284C7" />
+                <Text style={styles.autoPayTitle}>Google Play AutoPay Supported</Text>
+              </View>
+              <Text style={styles.autoPayDesc}>
+                Pay via UPI AutoPay (Google Pay, PhonePe, Paytm), Credit/Debit Card or NetBanking. Automatically renews until cancelled.
+              </Text>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                style={styles.manageSubLink}
+                onPress={() => {
+                  Linking.openURL('https://play.google.com/store/account/subscriptions').catch(() => {
+                    Alert.alert(
+                      'Manage Subscriptions',
+                      'Open Google Play Store ➡️ Profile ➡️ Payments & subscriptions to manage your AutoPay.'
+                    );
+                  });
+                }}
+              >
+                <Text style={styles.manageSubText}>Manage or Cancel Subscriptions in Google Play</Text>
+                <Ionicons name="open-outline" size={13} color="#2563EB" />
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </View>
       </View>
@@ -545,5 +647,45 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#FFFFFF',
+  },
+  autoPayNotice: {
+    backgroundColor: '#F0F9FF',
+    borderRadius: 14,
+    padding: 12,
+    marginTop: 14,
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  autoPayRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  autoPayTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0369A1',
+  },
+  autoPayDesc: {
+    fontSize: 11.5,
+    color: '#0C4A6E',
+    lineHeight: 16,
+  },
+  manageSubLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: '#E0F2FE',
+  },
+  manageSubText: {
+    fontSize: 11.5,
+    fontWeight: '600',
+    color: '#2563EB',
+    textDecorationLine: 'underline',
   },
 });
