@@ -185,7 +185,10 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
 
       const res = await fetch(`${API_BASE_URL}/api/payment/verify-play-purchase`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': 'AnihubTeraSecureKey2026_xYz'
+        },
         body: JSON.stringify({
           email: user?.email,
           purchaseToken: purchaseToken || `test_token_${Date.now()}`,
