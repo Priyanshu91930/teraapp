@@ -358,15 +358,25 @@ export default function HomeScreen({ navigation, route }) {
     if (isAdReady) {
       try {
         console.log('[HomeScreen] Ad is already loaded! Showing Rewarded Ad now...');
-        const timer = setTimeout(() => {
-          console.warn('[HomeScreen] Ad timeout fallback triggered (2s)');
+        let timer = setTimeout(() => {
+          console.warn('[HomeScreen] Ad timeout fallback triggered (3s)');
           safeExecute();
-        }, 2000);
+        }, 3000);
+
+        const unsubOpen = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.OPENED,
+          () => {
+            console.log('[HomeScreen] Ad opened on screen. Clearing timeout.');
+            if (timer) clearTimeout(timer);
+            try { unsubOpen(); } catch (e) {}
+          }
+        );
 
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
           AdEventType.CLOSED,
           () => {
-            clearTimeout(timer);
+            if (timer) clearTimeout(timer);
+            try { unsubOpen(); } catch (e) {}
             try { unsubClose(); } catch (e) {}
             setAdLoaded(false);
             try { rewardedInterstitialRef.current?.load(); } catch (e) {}
@@ -403,14 +413,24 @@ export default function HomeScreen({ navigation, route }) {
         console.log('[HomeScreen] Ad finished loading during wait window! Showing now...');
         setAdLoaded(true);
 
-        const timer = setTimeout(() => {
+        let timer = setTimeout(() => {
           safeExecute();
-        }, 2000);
+        }, 3000);
+
+        const unsubOpen = rewardedInterstitialRef.current.addAdEventListener(
+          AdEventType.OPENED,
+          () => {
+            console.log('[HomeScreen] Ad opened on screen. Clearing timeout.');
+            if (timer) clearTimeout(timer);
+            try { unsubOpen(); } catch (e) {}
+          }
+        );
 
         const unsubClose = rewardedInterstitialRef.current.addAdEventListener(
           AdEventType.CLOSED,
           () => {
-            clearTimeout(timer);
+            if (timer) clearTimeout(timer);
+            try { unsubOpen(); } catch (e) {}
             try { unsubClose(); } catch (e) {}
             setAdLoaded(false);
             try { rewardedInterstitialRef.current?.load(); } catch (e) {}
@@ -452,13 +472,6 @@ export default function HomeScreen({ navigation, route }) {
     if (!url) return;
 
     setParsing(true);
-    showAdBeforeAction(() => {
-      doResolve(url);
-    });
-  }
-
-  async function doResolve(url) {
-    setParsing(true);
     setResult(null);
     setError('');
     // Reset all download UI states for the new file
@@ -470,116 +483,142 @@ export default function HomeScreen({ navigation, route }) {
     setActiveDownloadId(null);
     setIsPaused(false);
 
-    try {
-      const s = settings || await getSettings();
-      const currentUserEmail = user?.email || (await getStoredUser())?.email || null;
-      const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser, 1, 5, currentUserEmail);
-      
-      const totalCount = data.totalFiles || (data.isFolder ? (data.totalCount || 0) : 0) || (data.list && data.list.length > 1 ? data.list.length : 1);
-      const folderRawTitle = data.title ? data.title.split('/').filter(Boolean).pop() : '';
-      const folderTitle = folderRawTitle || `Folder (${totalCount} Files)`;
-      const rawList = Array.isArray(data.list) && data.list.length > 0 ? data.list : [data];
-      const formattedFiles = rawList.map(item => ({
-        name: item.name || item.server_filename || 'video.mp4',
-        size: item.size || 'Unknown',
-        thumbnail: item.thumbnail || item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || item.thumbs?.icon || item.pic || item.image || data.thumbnail || data.thumbs?.url3 || '',
-        dlink: item.dlink || item.download_url || data.downloadUrl || '',
-        download_url: item.download_url || item.dlink || data.downloadUrl || '',
-        stream_url: item.stream_url || data.stream_url || '',
-        downloadHeaders: data.downloadHeaders || item.downloadHeaders || {},
-        shareUrl: url,
-        folderName: folderTitle,
-      })).filter(item => item.dlink || item.download_url);
-
-      const isFolder = Boolean(
-        data.isFolder ||
-        data.isFolderRestricted ||
-        totalCount > 1 ||
-        formattedFiles.length > 1 ||
-        (data.list && data.list.length > 1) ||
-        (data.rawList && data.rawList.length > 1) ||
-        (data.rawJson && (data.rawJson.isFolder || data.rawJson.isFolderRestricted || data.rawJson.code === 'VIP_REQUIRED_FOR_FOLDERS'))
-      );
-
-      console.log(`[Resolve] Resolved link. isFolder=${isFolder}, isPremiumUser=${isPremiumUser}, formattedCount=${formattedFiles.length}, totalFiles=${totalCount}`);
-
-      if (isFolder && !isPremiumUser) {
-        setResult(null);
-        setError('');
-        Alert.alert(
-          '⭐ VIP Premium Required',
-          'TeraBox Folder Download is an exclusive VIP feature. Please upgrade to VIP Premium to access and download full multi-file folders!',
-          [
-            { text: 'Upgrade to VIP', onPress: () => setShowSubscriptionModal(true) },
-            { text: 'Cancel', style: 'cancel' },
-          ]
-        );
-        return;
-      }
-
-      if (formattedFiles.length === 0) {
-        throw new Error('Could not find any downloadable files for this link.');
-      }
-
-      if (isFolder || formattedFiles.length > 1) {
-        const folderResult = {
-          isFolder: true,
-          name: folderTitle || `Folder (${totalCount} Files)`,
-          size: `${totalCount} Files`,
-          totalFiles: totalCount,
-          currentPage: data.page || 1,
-          hasMore: Boolean(data.hasMore),
-          thumbnail: formattedFiles[0]?.thumbnail || '',
-          files: formattedFiles,
-          shareUrl: url,
-        };
-        setResult(folderResult);
-      } else {
-        setResult(formattedFiles[0]);
-      }
-
-      // Save resolved link item to history & sync to MongoDB cloud
+    // 🚀 PARALLEL PRE-FETCH: Start backend link parsing IMMEDIATELY in the background
+    console.log('[HomeScreen] Starting background parallel link parsing while Ad plays...');
+    const parsePromise = (async () => {
       try {
-        const currentUser = user || await getStoredUser();
-        await addHistoryItem({
-          name: (isFolder || formattedFiles.length > 1) ? (folderTitle || `Folder (${totalCount} Files)`) : formattedFiles[0].name,
-          size: (isFolder || formattedFiles.length > 1) ? `${totalCount} Files` : formattedFiles[0].size,
-          thumbnail: formattedFiles[0]?.thumbnail || '',
-          url: url,
-          dlink: formattedFiles[0]?.dlink || '',
-          stream_url: formattedFiles[0]?.stream_url || '',
-          status: 'resolved',
-        }, currentUser?.email);
-      } catch (histErr) {
-        console.log('Failed to auto-save history:', histErr.message);
+        const s = settings || await getSettings();
+        const currentUserEmail = user?.email || (await getStoredUser())?.email || null;
+        const data = await resolveTeraboxLink(s.apiBaseUrl, url, s.downloadQuality, isPremiumUser, 1, 5, currentUserEmail);
+        return { success: true, data };
+      } catch (err) {
+        return { success: false, error: err };
       }
-    } catch (e) {
-      console.log('[Resolve Error]:', e.code, e.message);
-      setResult(null);
-      const isVipFolderError = 
-        e.code === 'VIP_REQUIRED_FOR_FOLDERS' ||
-        (e.message && (
-          e.message.includes('VIP') ||
-          e.message.includes('exclusive to VIP') ||
-          e.message.includes('Folders contain multiple files') ||
-          e.message.includes('Folder')
-        ));
+    })();
 
-      if (isVipFolderError && !isPremiumUser) {
-        setError('');
-        Alert.alert(
-          '⭐ VIP Premium Required',
-          'TeraBox Folder Download is an exclusive VIP feature. Please upgrade to VIP Premium to access and download full multi-file folders!',
-          [
-            { text: 'Upgrade to VIP', onPress: () => setShowSubscriptionModal(true) },
-            { text: 'Cancel', style: 'cancel' },
-          ]
-        );
-      } else {
-        setError(e.message || 'Failed to resolve link. Please try again.');
+    // 🚀 SIMULTANEOUS AD: Show ad at the same time. When ad closes, data is already parsed!
+    showAdBeforeAction(async () => {
+      console.log('[HomeScreen] Ad completed or skipped. Applying parsed link data...');
+      try {
+        const outcome = await parsePromise;
+        if (outcome.success) {
+          await processResolvedData(outcome.data, url);
+        } else {
+          handleResolveError(outcome.error);
+        }
+      } catch (finalErr) {
+        setError(finalErr?.message || 'Failed to resolve link.');
+      } finally {
+        setParsing(false);
       }
-    } finally {
-      setParsing(false);
+    });
+  }
+
+  async function processResolvedData(data, url) {
+    const totalCount = data.totalFiles || (data.isFolder ? (data.totalCount || 0) : 0) || (data.list && data.list.length > 1 ? data.list.length : 1);
+    const folderRawTitle = data.title ? data.title.split('/').filter(Boolean).pop() : '';
+    const folderTitle = folderRawTitle || `Folder (${totalCount} Files)`;
+    const rawList = Array.isArray(data.list) && data.list.length > 0 ? data.list : [data];
+    const formattedFiles = rawList.map(item => ({
+      name: item.name || item.server_filename || 'video.mp4',
+      size: item.size || 'Unknown',
+      thumbnail: item.thumbnail || item.thumbs?.url3 || item.thumbs?.url2 || item.thumbs?.url1 || item.thumbs?.icon || item.pic || item.image || data.thumbnail || data.thumbs?.url3 || '',
+      dlink: item.dlink || item.download_url || data.downloadUrl || '',
+      download_url: item.download_url || item.dlink || data.downloadUrl || '',
+      stream_url: item.stream_url || data.stream_url || '',
+      downloadHeaders: data.downloadHeaders || item.downloadHeaders || {},
+      shareUrl: url,
+      folderName: folderTitle,
+    })).filter(item => item.dlink || item.download_url);
+
+    const isFolder = Boolean(
+      data.isFolder ||
+      data.isFolderRestricted ||
+      totalCount > 1 ||
+      formattedFiles.length > 1 ||
+      (data.list && data.list.length > 1) ||
+      (data.rawList && data.rawList.length > 1) ||
+      (data.rawJson && (data.rawJson.isFolder || data.rawJson.isFolderRestricted || data.rawJson.code === 'VIP_REQUIRED_FOR_FOLDERS'))
+    );
+
+    console.log(`[Resolve] Resolved link. isFolder=${isFolder}, isPremiumUser=${isPremiumUser}, formattedCount=${formattedFiles.length}, totalFiles=${totalCount}`);
+
+    if (isFolder && !isPremiumUser) {
+      setResult(null);
+      setError('');
+      Alert.alert(
+        '⭐ VIP Premium Required',
+        'TeraBox Folder Download is an exclusive VIP feature. Please upgrade to VIP Premium to access and download full multi-file folders!',
+        [
+          { text: 'Upgrade to VIP', onPress: () => setShowSubscriptionModal(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+      return;
+    }
+
+    if (formattedFiles.length === 0) {
+      throw new Error('Could not find any downloadable files for this link.');
+    }
+
+    if (isFolder || formattedFiles.length > 1) {
+      const folderResult = {
+        isFolder: true,
+        name: folderTitle || `Folder (${totalCount} Files)`,
+        size: `${totalCount} Files`,
+        totalFiles: totalCount,
+        currentPage: data.page || 1,
+        hasMore: Boolean(data.hasMore),
+        thumbnail: formattedFiles[0]?.thumbnail || '',
+        files: formattedFiles,
+        shareUrl: url,
+      };
+      setResult(folderResult);
+    } else {
+      setResult(formattedFiles[0]);
+    }
+
+    // Save resolved link item to history & sync to MongoDB cloud
+    try {
+      const currentUser = user || await getStoredUser();
+      await addHistoryItem({
+        name: (isFolder || formattedFiles.length > 1) ? (folderTitle || `Folder (${totalCount} Files)`) : formattedFiles[0].name,
+        size: (isFolder || formattedFiles.length > 1) ? `${totalCount} Files` : formattedFiles[0].size,
+        thumbnail: formattedFiles[0]?.thumbnail || '',
+        url: url,
+        dlink: formattedFiles[0]?.dlink || '',
+        stream_url: formattedFiles[0]?.stream_url || '',
+        status: 'resolved',
+      }, currentUser?.email);
+    } catch (histErr) {
+      console.log('Failed to auto-save history:', histErr.message);
+    }
+  }
+
+  function handleResolveError(e) {
+    console.log('[Resolve Error]:', e?.code, e?.message);
+    setResult(null);
+    const isVipFolderError = 
+      e?.code === 'VIP_REQUIRED_FOR_FOLDERS' ||
+      (e?.message && (
+        e.message.includes('VIP') ||
+        e.message.includes('exclusive to VIP') ||
+        e.message.includes('Folders contain multiple files') ||
+        e.message.includes('Folder')
+      ));
+
+    if (isVipFolderError && !isPremiumUser) {
+      setError('');
+      Alert.alert(
+        '⭐ VIP Premium Required',
+        'TeraBox Folder Download is an exclusive VIP feature. Please upgrade to VIP Premium to access and download full multi-file folders!',
+        [
+          { text: 'Upgrade to VIP', onPress: () => setShowSubscriptionModal(true) },
+          { text: 'Cancel', style: 'cancel' },
+        ]
+      );
+    } else {
+      setError(e?.message || 'Failed to resolve link. Please try again.');
     }
   }
 
