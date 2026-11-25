@@ -24,7 +24,7 @@ import {
 } from 'expo-iap';
 
 const API_BASE_URL = 'https://teraapi-six.vercel.app';
-const SKUS = ['weekly_pass', 'monthly_pro', 'yearly_vip'];
+const SKUS = ['week_pass', 'month_pro', 'year_vip', 'weekly_pass', 'monthly_pro', 'yearly_vip'];
 
 export default function SubscriptionModal({ visible, onClose, user, onPaymentSuccess }) {
   const [selectedPlan, setSelectedPlan] = useState('monthly'); // 'weekly', 'monthly', 'yearly'
@@ -35,7 +35,8 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
   const plans = [
     {
       id: 'weekly',
-      sku: 'weekly_pass',
+      sku: 'week_pass',
+      altSku: 'weekly_pass',
       name: 'Weekly Pass',
       duration: 'Auto-renews weekly',
       badge: null,
@@ -52,7 +53,8 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     },
     {
       id: 'monthly',
-      sku: 'monthly_pro',
+      sku: 'month_pro',
+      altSku: 'monthly_pro',
       name: 'Monthly Pro',
       duration: 'Auto-renews monthly',
       badge: 'MOST POPULAR',
@@ -69,7 +71,8 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
     },
     {
       id: 'yearly',
-      sku: 'yearly_vip',
+      sku: 'year_vip',
+      altSku: 'yearly_vip',
       name: 'Yearly VIP',
       duration: 'Auto-renews yearly',
       badge: 'SAVE 75%',
@@ -276,14 +279,16 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
       }
 
       const currentPlan = plans.find((p) => p.id === selectedPlan);
-      const sku = currentPlan?.sku || 'monthly_pro';
+      const storeProd = (subscriptionsList || []).find(
+        (p) => p && (
+          p.id === currentPlan?.sku || p.productId === currentPlan?.sku || p.sku === currentPlan?.sku ||
+          p.id === currentPlan?.altSku || p.productId === currentPlan?.altSku || p.sku === currentPlan?.altSku
+        )
+      );
+      const sku = storeProd?.id || storeProd?.productId || currentPlan?.sku || 'month_pro';
       console.log('[IAP Action] Target SKU:', sku, '| User Email:', user?.email);
 
       setLoading(true);
-
-      const storeProd = (subscriptionsList || []).find(
-        (p) => p && (p.id === sku || p.productId === sku || p.sku === sku)
-      );
 
       // Check if this product has Google Play Subscription offers (AutoPay)
       const offers = storeProd?.subscriptionOffers;
@@ -405,7 +410,10 @@ export default function SubscriptionModal({ visible, onClose, user, onPaymentSuc
             {plans.map((item) => {
               const isSelected = selectedPlan === item.id;
               const storeProd = (subscriptionsList || []).find(
-                (p) => p && (p.id === item.sku || p.productId === item.sku || p.sku === item.sku)
+                (p) => p && (
+                  p.id === item.sku || p.productId === item.sku || p.sku === item.sku ||
+                  p.id === item.altSku || p.productId === item.altSku || p.sku === item.altSku
+                )
               );
               // Dynamic price directly from Google Play Store (zero hardcoding)
               const displayPrice = storeProd?.displayPrice;
